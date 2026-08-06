@@ -20,16 +20,6 @@ server:
       # 阻塞任务线程池, 当执行类似servlet请求阻塞操作, undertow会从这个线程池中取得线程,它的值设置取决于系统的负载
       worker: 256
 
-captcha:
-  # 是否启用验证码校验
-  enable: true
-  # 验证码类型 math 数组计算 char 字符验证
-  type: math
-  # 数字验证码位数
-  numberLength: 1
-  # 字符验证码长度
-  charLength: 4
-
 # 日志配置
 logging:
   level:
@@ -115,7 +105,6 @@ security:
     - /error
     - /*/api-docs
     - /*/api-docs/**
-    - /warm-flow-ui/config
 
 # 多租户配置
 tenant:
@@ -132,7 +121,6 @@ tenant:
     - sys_user_role
     - sys_client
     - sys_oss_config
-    - flow_spel
 
 # MyBatisPlus配置
 # https://baomidou.com/config/
@@ -195,18 +183,14 @@ springdoc:
       name: Lion Li
       email: crazylionli@163.com
       url: https://gitee.com/dromara/RuoYi-Vue-Plus
-  #这里定义了两个分组，可定义多个，也可以不定义
+  # 接口文档分组
   group-configs:
-    - group: 1.演示模块
-      packages-to-scan: org.dromara.demo
-    - group: 2.通用模块
+    - group: 1.通用模块
       packages-to-scan: org.dromara.web
-    - group: 3.系统模块
+    - group: 2.系统模块
       packages-to-scan: org.dromara.system
-    - group: 4.代码生成模块
+    - group: 3.代码生成模块
       packages-to-scan: org.dromara.generator
-    - group: 5.工作流模块
-      packages-to-scan: org.dromara.workflow
 
 # 防止XSS攻击
 xss:
@@ -215,7 +199,6 @@ xss:
   # 排除链接
   excludeUrls:
     - /system/notice
-    - /warm-flow/save-json
 
 --- # 分布式锁 lock4j 全局配置
 lock4j:
@@ -226,6 +209,10 @@ lock4j:
 
 --- # Actuator 监控端点的配置项
 management:
+  # Actuator Basic Auth；与已删除的 Spring Boot Admin 客户端解耦
+  auth:
+    username: @monitor.username@
+    password: @monitor.password@
   endpoints:
     web:
       exposure:
@@ -249,16 +236,3 @@ websocket:
   path: /resource/websocket
   # 设置访问源地址
   allowedOrigins: '*'
-
---- # warm-flow工作流配置
-warm-flow:
-  # 是否开启工作流，默认true
-  enabled: true
-  # 是否开启设计器ui
-  ui: true
-  # 是否显示流程图顶部文字
-  top-text-show: true
-  # 是否渲染节点悬浮提示，默认true
-  node-tooltip: true
-  # 默认Authorization，如果有多个token，用逗号分隔
-  token-name: ${sa-token.token-name},clientid

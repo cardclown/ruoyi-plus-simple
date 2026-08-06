@@ -91,8 +91,8 @@ public class SecurityConfig implements WebMvcConfigurer {
      */
     @Bean
     public SaServletFilter getSaServletFilter() {
-        String username = SpringUtils.getProperty("spring.boot.admin.client.username");
-        String password = SpringUtils.getProperty("spring.boot.admin.client.password");
+        String username = SpringUtils.getProperty("management.auth.username");
+        String password = SpringUtils.getProperty("management.auth.password");
         return new SaServletFilter()
             .addInclude("/actuator", "/actuator/**")
             .setAuth(obj -> {

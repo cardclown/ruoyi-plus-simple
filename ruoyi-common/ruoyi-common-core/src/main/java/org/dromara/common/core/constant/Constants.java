@@ -63,11 +63,6 @@ public interface Constants {
     String LOGIN_FAIL = "Error";
 
     /**
-     * 验证码有效期（分钟）
-     */
-    Integer CAPTCHA_EXPIRATION = 2;
-
-    /**
      * 顶级父级id
      */
     Long TOP_PARENT_ID = 0L;

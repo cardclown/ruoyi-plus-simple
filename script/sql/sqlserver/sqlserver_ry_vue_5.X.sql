@@ -1,221 +1,3 @@
-create table sys_social
-(
-    id                 bigint            NOT NULL,
-    user_id            bigint            NOT NULL,
-    tenant_id          nvarchar(20)      DEFAULT ('000000') NULL,
-    auth_id            nvarchar(255)     NOT NULL,
-    source             nvarchar(255)     NOT NULL,
-    open_id            nvarchar(255)     NULL,
-    user_name          nvarchar(30)      NOT NULL,
-    nick_name          nvarchar(30)      DEFAULT ('')   NULL,
-    email              nvarchar(255)     DEFAULT ('')   NULL,
-    avatar             nvarchar(500)     DEFAULT ('')   NULL,
-    access_token       nvarchar(2000)    NOT NULL,
-    expire_in          bigint            NULL,
-    refresh_token      nvarchar(2000)    NULL,
-    access_code        nvarchar(255)     NULL,
-    union_id           nvarchar(255)     NULL,
-    scope              nvarchar(255)     NULL,
-    token_type         nvarchar(255)     NULL,
-    id_token           nvarchar(2000)    NULL,
-    mac_algorithm      nvarchar(255)     NULL,
-    mac_key            nvarchar(255)     NULL,
-    code               nvarchar(255)     NULL,
-    oauth_token        nvarchar(255)     NULL,
-    oauth_token_secret nvarchar(255)     NULL,
-    create_dept        bigint,
-    create_by          bigint,
-    create_time        datetime2(7),
-    update_by          bigint,
-    update_time        datetime2(7),
-    del_flag           nchar             DEFAULT ('0')   NULL,
-    CONSTRAINT PK__sys_social__B21E8F2427725F8A PRIMARY KEY CLUSTERED (id)
-    WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
-    ON [PRIMARY]
-)
-ON [PRIMARY]
-GO
-
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'id' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户ID' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'user_id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'租户id' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'tenant_id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'平台+平台唯一id' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'auth_id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户来源' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'source'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'平台编号唯一id' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'open_id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'登录账号' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'user_name'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户昵称' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'nick_name'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户邮箱' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'email'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'头像地址' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'avatar'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户的授权令牌' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'access_token'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户的授权令牌的有效期，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'expire_in'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'刷新令牌，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'refresh_token'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'平台的授权信息，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'access_code'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户的 unionid' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'union_id'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'授予的权限，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'scope'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'个别平台的授权信息，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'token_type'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'id token，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'id_token'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'小米平台用户的附带属性，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'mac_algorithm'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'小米平台用户的附带属性，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'mac_key'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'用户的授权code，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'code'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'Twitter平台用户的附带属性，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'oauth_token'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'Twitter平台用户的附带属性，部分平台可能没有' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'oauth_token_secret'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'删除标志（0代表存在 1代表删除）' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'del_flag'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'创建部门' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'create_dept'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'创建者' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'create_by'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'创建时间' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'create_time'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'更新者' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'update_by'
-GO
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'更新时间' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social',
-    'COLUMN', N'update_time'
-GO
-EXEC sp_addextendedproperty
-    'MS_Description', N'社会化关系表',
-    'SCHEMA', N'dbo',
-    'TABLE', N'sys_social'
-GO
-
 CREATE TABLE sys_tenant
 (
     id                    bigint                          NOT NULL,
@@ -1259,21 +1041,14 @@ INSERT sys_dict_data VALUES (28, N'000000', 2, N'失败', N'1', N'sys_common_sta
 GO
 INSERT sys_dict_data VALUES (30, N'000000', 0, N'密码认证', N'password', N'sys_grant_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'密码认证')
 GO
-INSERT sys_dict_data VALUES (31, N'000000', 0, N'短信认证', N'sms', N'sys_grant_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'短信认证')
 GO
-INSERT sys_dict_data VALUES (32, N'000000', 0, N'邮件认证', N'email', N'sys_grant_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'邮件认证')
 GO
-INSERT sys_dict_data VALUES (33, N'000000', 0, N'小程序认证', N'xcx', N'sys_grant_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'小程序认证')
 GO
-INSERT sys_dict_data VALUES (34, N'000000', 0, N'三方登录认证', N'social', N'sys_grant_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'三方登录认证')
 GO
 INSERT sys_dict_data VALUES (35, N'000000', 0, N'PC', N'pc', N'sys_device_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'PC')
 GO
-INSERT sys_dict_data VALUES (36, N'000000', 0, N'安卓', N'android', N'sys_device_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'安卓')
 GO
-INSERT sys_dict_data VALUES (37, N'000000', 0, N'iOS', N'ios', N'sys_device_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'iOS')
 GO
-INSERT sys_dict_data VALUES (38, N'000000', 0, N'小程序', N'xcx', N'sys_device_type', N'', N'default', N'N', 103, 1, getdate(), NULL, NULL, N'小程序')
 GO
 
 CREATE TABLE sys_dict_type
@@ -1658,7 +1433,6 @@ INSERT sys_menu VALUES (3, N'系统工具', 0, 4, N'tool', NULL, N'', 1, 0, N'M'
 GO
 INSERT sys_menu VALUES (4, N'PLUS官网', 0, 5, N'https://gitee.com/dromara/RuoYi-Vue-Plus', null, N'', 0, 0, N'M', N'0', N'0', N'', N'guide', 103, 1, getdate(), null, null, N'RuoYi-Vue-Plus官网地址');
 GO
-INSERT sys_menu VALUES (5, N'测试菜单', 0, 5, N'demo', NULL, N'', 1, 0, N'M', N'0', N'0', NULL, N'star', 103, 1, getdate(), NULL, NULL, N'');
 GO
 INSERT sys_menu VALUES (100, N'用户管理', 1, 1, N'user', N'system/user/index', N'', 1, 0, N'C', N'0', N'0', N'system:user:list', N'user', 103, 1, getdate(), NULL, NULL, N'用户管理菜单')
 GO
@@ -1701,11 +1475,9 @@ GO
 INSERT sys_menu VALUES (133, N'文件配置管理',  1,   10, N'oss-config/index',              N'system/oss/config', N'', 1, 1, N'C', N'1', N'0', N'system:ossConfig:list',  N'#',                103, 1, getdate(), null, null, N'/system/oss');
 GO
 
-INSERT sys_menu VALUES (117, N'Admin监控', 2, 5, N'Admin', N'monitor/admin/index', N'', 1, 0, N'C', N'0', N'0', N'monitor:admin:list', N'dashboard', 103, 1, getdate(), NULL, NULL, N'Admin监控菜单');
 GO
 INSERT sys_menu VALUES (118, N'文件管理', 1, 10, N'oss', N'system/oss/index', N'', 1, 0, N'C', '0', N'0', N'system:oss:list', N'upload', 103, 1, getdate(), NULL, NULL, N'文件管理菜单');
 GO
-INSERT sys_menu VALUES (120, N'任务调度中心', 2, 5, N'snailjob', N'monitor/snailjob/index', N'', 1, 0, N'C', N'0', N'0', N'monitor:snailjob:list', N'job', 103, 1, getdate(), NULL, NULL, N'SnailJob控制台菜单');
 GO
 INSERT sys_menu VALUES (500, N'操作日志', 108, 1, N'operlog', N'monitor/operlog/index', N'', 1, 0, N'C', N'0', N'0', N'monitor:operlog:list', N'form', 103, 1, getdate(), NULL, NULL, N'操作日志菜单')
 GO
@@ -1871,31 +1643,18 @@ INSERT sys_menu VALUES (1064, N'客户端管理删除', 123, 4, N'#', N'', N'', 
 GO
 INSERT sys_menu VALUES (1065, N'客户端管理导出', 123, 5, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'system:client:export', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
--- 测试菜单
-INSERT sys_menu VALUES (1500, N'测试单表', 5, 1, N'demo', N'demo/demo/index', N'', 1, 0, N'C', N'0', N'0', N'demo:demo:list', N'#', 103, 1, getdate(), NULL, NULL, N'测试单表菜单');
 GO
-INSERT sys_menu VALUES (1501, N'测试单表查询', 1500, 1, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:demo:query', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1502, N'测试单表新增', 1500, 2, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:demo:add', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1503, N'测试单表修改', 1500, 3, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:demo:edit', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1504, N'测试单表删除', 1500, 4, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:demo:remove', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1505, N'测试单表导出', 1500, 5, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:demo:export', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
 
-INSERT sys_menu VALUES (1506, N'测试树表', 5, 1, N'tree', N'demo/tree/index', N'', 1, 0, N'C', N'0', N'0', N'demo:tree:list', N'#', 103, 1, getdate(), NULL, NULL, N'测试树表菜单');
 GO
-INSERT sys_menu VALUES (1507, N'测试树表查询', 1506, 1, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:tree:query', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1508, N'测试树表新增', 1506, 2, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:tree:add', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1509, N'测试树表修改', 1506, 3, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:tree:edit', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1510, N'测试树表删除', 1506, 4, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:tree:remove', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
-INSERT sys_menu VALUES (1511, N'测试树表导出', 1506, 5, N'#', N'', N'', 1, 0, N'F', N'0', N'0', N'demo:tree:export', N'#', 103, 1, getdate(), NULL, NULL, N'');
 GO
 
 CREATE TABLE sys_notice
@@ -3335,307 +3094,5 @@ EXEC sp_addextendedproperty
     'TABLE', N'sys_client'
 GO
 
-INSERT INTO sys_client VALUES (N'1', N'e5cd7e4891bf95d1d19206ce24a7b32e', N'pc', N'pc123', N'password,social', N'pc', 1800, 604800, N'0', N'0', 103, 1, getdate(), 1, getdate())
-GO
-INSERT INTO sys_client VALUES (N'2', N'428a8310cd442757ae699df5d894f051', N'app', N'app123', N'password,sms,social', N'android', 1800, 604800, N'0', N'0', 103, 1, getdate(), 1, getdate())
-GO
-
-CREATE TABLE test_demo
-(
-    id          bigint            NOT NULL,
-    tenant_id   nvarchar(20)      DEFAULT ('000000') NULL,
-    dept_id     bigint            NULL,
-    user_id     bigint            NULL,
-    order_num   int DEFAULT ((0)) NULL,
-    test_key    nvarchar(255)     NULL,
-    value       nvarchar(255)     NULL,
-    version     int DEFAULT ((0)) NULL,
-    create_dept bigint            NULL,
-    create_time datetime2(0)      NULL,
-    create_by   bigint            NULL,
-    update_time datetime2(0)      NULL,
-    update_by   bigint            NULL,
-    del_flag    int DEFAULT ((0)) NULL,
-    CONSTRAINT PK__test_dem__3213E83F176051C8 PRIMARY KEY CLUSTERED (id)
-        WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
-        ON [PRIMARY]
-)
-ON [PRIMARY]
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'主键',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'租户id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'tenant_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'部门id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'dept_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'用户id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'user_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'排序号',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'order_num'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'key键',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'test_key'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'值',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'value'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'版本',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'version'
-GO
-
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'创建部门' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'create_dept'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'创建时间',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'create_time'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'创建人',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'create_by'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'更新时间',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'update_time'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'更新人',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'update_by'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'删除标志',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo',
-    'COLUMN', N'del_flag'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'测试单表',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_demo'
-GO
-
-CREATE TABLE test_tree
-(
-    id          bigint               NOT NULL,
-    tenant_id   nvarchar(20)         DEFAULT ('000000') NULL,
-    parent_id   bigint DEFAULT ((0)) NULL,
-    dept_id     bigint               NULL,
-    user_id     bigint               NULL,
-    tree_name   nvarchar(255)        NULL,
-    version     int    DEFAULT ((0)) NULL,
-    create_dept bigint               NULL,
-    create_time datetime2(0)         NULL,
-    create_by   bigint               NULL,
-    update_time datetime2(0)         NULL,
-    update_by   bigint               NULL,
-    del_flag    int    DEFAULT ((0)) NULL,
-    CONSTRAINT PK__test_tre__3213E83FC75A1B63 PRIMARY KEY CLUSTERED (id)
-        WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
-        ON [PRIMARY]
-)
-ON [PRIMARY]
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'主键',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'租户id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'tenant_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'父id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'parent_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'部门id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'dept_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'用户id',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'user_id'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'值',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'tree_name'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'版本',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'version'
-GO
-
-EXEC sys.sp_addextendedproperty
-    'MS_Description', N'创建部门' ,
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'create_dept'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'创建时间',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'create_time'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'创建人',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'create_by'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'更新时间',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'update_time'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'更新人',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'update_by'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'删除标志',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree',
-    'COLUMN', N'del_flag'
-GO
-
-EXEC sp_addextendedproperty
-    'MS_Description', N'测试树表',
-    'SCHEMA', N'dbo',
-    'TABLE', N'test_tree'
-GO
-
-INSERT test_demo VALUES (1, N'000000', 102, 4, 1, N'测试数据权限', N'测试', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (2, N'000000', 102, 3, 2, N'子节点1', N'111', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (3, N'000000', 102, 3, 3, N'子节点2', N'222', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (4, N'000000', 108, 4, 4, N'测试数据', N'demo', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (5, N'000000', 108, 3, 13, N'子节点11', N'1111', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (6, N'000000', 108, 3, 12, N'子节点22', N'2222', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (7, N'000000', 108, 3, 11, N'子节点33', N'3333', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (8, N'000000', 108, 3, 10, N'子节点44', N'4444', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (9, N'000000', 108, 3, 9, N'子节点55', N'5555', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (10, N'000000', 108, 3, 8, N'子节点66', N'6666', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (11, N'000000', 108, 3, 7, N'子节点77', N'7777', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (12, N'000000', 108, 3, 6, N'子节点88', N'8888', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_demo VALUES (13, N'000000', 108, 3, 5, N'子节点99', N'9999', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-
-INSERT test_tree VALUES (1, N'000000', 0, 102, 4, N'测试数据权限', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (2, N'000000', 1, 102, 3, N'子节点1', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (3, N'000000', 2, 102, 3, N'子节点2', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (4, N'000000', 0, 108, 4, N'测试树1', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (5, N'000000', 4, 108, 3, N'子节点11', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (6, N'000000', 4, 108, 3, N'子节点22', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (7, N'000000', 4, 108, 3, N'子节点33', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (8, N'000000', 5, 108, 3, N'子节点44', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (9, N'000000', 6, 108, 3, N'子节点55', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (10, N'000000', 7, 108, 3, N'子节点66', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (11, N'000000', 7, 108, 3, N'子节点77', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (12, N'000000', 10, 108, 3, N'子节点88', 0, 103, getdate(), 1, NULL, NULL, 0);
-GO
-INSERT test_tree VALUES (13, N'000000', 10, 108, 3, N'子节点99', 0, 103, getdate(), 1, NULL, NULL, 0);
+INSERT INTO sys_client VALUES (N'1', N'e5cd7e4891bf95d1d19206ce24a7b32e', N'pc', N'pc123', N'password', N'pc', 1800, 604800, N'0', N'0', 103, 1, getdate(), 1, getdate())
 GO
