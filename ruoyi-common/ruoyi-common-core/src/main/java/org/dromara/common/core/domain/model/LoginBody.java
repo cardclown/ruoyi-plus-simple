@@ -35,4 +35,14 @@ public class LoginBody implements Serializable {
      */
     private String tenantId;
 
+    /**
+     * 验证码
+     */
+    private String code;
+
+    /**
+     * 唯一标识
+     */
+    private String uuid;
+
 }
