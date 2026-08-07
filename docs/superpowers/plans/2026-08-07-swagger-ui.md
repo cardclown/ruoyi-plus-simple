@@ -55,8 +55,9 @@ Run:
 $mvn = 'C:\Users\dj\.m2\wrapper\dists\apache-maven-3.9.12-bin\7v3camr5asa67op289n7tbbbh2\apache-maven-3.9.12\bin\mvn.cmd'
 $output = & $mvn -pl ruoyi-common/ruoyi-common-doc -am dependency:tree `
   '-Dincludes=org.springdoc:springdoc-openapi-starter-webmvc-ui' 2>&1
+$outputText = $output -join "`n"
 
-if ($output -notmatch 'springdoc-openapi-starter-webmvc-ui') {
+if ($outputText -notmatch 'springdoc-openapi-starter-webmvc-ui') {
     throw 'RED: 依赖树中不存在 SpringDoc Swagger UI'
 }
 ```
@@ -113,12 +114,13 @@ Run:
 $mvn = 'C:\Users\dj\.m2\wrapper\dists\apache-maven-3.9.12-bin\7v3camr5asa67op289n7tbbbh2\apache-maven-3.9.12\bin\mvn.cmd'
 $output = & $mvn -pl ruoyi-common/ruoyi-common-doc -am dependency:tree `
   '-Dincludes=org.springdoc:springdoc-openapi-starter-webmvc-ui' 2>&1
+$outputText = $output -join "`n"
 
 if ($LASTEXITCODE -ne 0) {
     throw 'Maven dependency:tree 执行失败'
 }
 
-if ($output -notmatch 'springdoc-openapi-starter-webmvc-ui:jar:2.8.17') {
+if ($outputText -notmatch 'springdoc-openapi-starter-webmvc-ui:jar:2.8.17') {
     throw '未解析到 SpringDoc Swagger UI 2.8.17'
 }
 ```
