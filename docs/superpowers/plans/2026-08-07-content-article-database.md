@@ -1,50 +1,50 @@
-# Content Article Database Implementation Plan
+# 文章管理数据库实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行代理要求：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，逐项执行本计划。所有步骤使用复选框（`- [ ]`）跟踪状态。
 
-**Goal:** Create and apply an idempotent PostgreSQL migration for article storage, article-tag relations, and the default article dictionaries.
+**目标：** 创建并执行一份可重复运行的 PostgreSQL 迁移脚本，用于建立文章表、文章标签关联表以及默认文章字典。
 
-**Architecture:** Add one standalone migration under `script/sql/postgres/`. The migration creates two tables without business secondary indexes or foreign keys, then seeds two dictionary types and eleven dictionary entries for tenant `000000` using `NOT EXISTS` guards and dynamically allocated seed IDs. Validate the script twice inside a rolled-back transaction before applying it to the local `ry_vue` database.
+**架构：** 在 `script/sql/postgres/` 下新增一份独立迁移脚本。脚本创建两张表，不添加业务二级索引和外键；然后使用 `NOT EXISTS` 防重和动态分配的初始化 ID，为默认租户 `000000` 写入两个字典类型及十一条字典数据。正式执行前，在回滚事务内连续执行脚本两次，验证语法和幂等性。
 
-**Tech Stack:** PostgreSQL 17, Docker, PowerShell, RuoYi-Vue-Plus 5.X schema conventions
+**技术栈：** PostgreSQL 17、Docker、PowerShell、RuoYi-Vue-Plus 5.X 数据库规范
 
-## Global Constraints
+## 全局约束
 
-- `content_article` is tenant-isolated through `tenant_id` and supports data permission through `create_dept` and `create_by`.
-- `content_article_tag` has no `tenant_id` and will later be added to `tenant.excludes` during application implementation.
-- `tag_ids` is `varchar(200)`, stores comma-separated IDs, allows the empty string, and is limited to ten tags in Java code only.
-- `status` uses `0` for draft and `1` for published.
-- `del_flag` uses `0` for normal and `1` for deleted.
-- Rich text is stored as HTML in PostgreSQL `text`; image binaries remain in OSS.
-- Do not add business secondary indexes, foreign keys, or database check constraints.
-- Seed only the default tenant `000000`.
-- Seed one category (`公司新闻`) and ten tags.
+- `content_article` 通过 `tenant_id` 实现租户隔离，通过 `create_dept` 和 `create_by` 支持数据权限。
+- `content_article_tag` 不保存 `tenant_id`，后续实现业务代码时加入 `tenant.excludes`。
+- `tag_ids` 使用 `varchar(200)`，保存逗号分隔的标签 ID；允许空字符串，最多十个标签的限制仅在 Java 代码中校验。
+- `status` 使用 `0` 表示草稿、`1` 表示已发布。
+- `del_flag` 使用 `0` 表示正常、`1` 表示已删除。
+- 富文本以 HTML 保存到 PostgreSQL `text` 字段；图片二进制仍然存入 OSS。
+- 不添加业务二级索引、外键或数据库检查约束。
+- 只初始化默认租户 `000000`。
+- 初始化一个分类“公司新闻”和十个标签。
 
 ---
 
-### Task 1: Create and validate the PostgreSQL migration
+### 任务一：创建并验证 PostgreSQL 迁移脚本
 
-**Files:**
-- Create: `script/sql/postgres/content_article.sql`
-- Reference: `docs/superpowers/specs/2026-08-07-content-article-database-design.md`
+**文件：**
+- 新建：`script/sql/postgres/content_article.sql`
+- 参考：`docs/superpowers/specs/2026-08-07-content-article-database-design.md`
 
-**Interfaces:**
-- Consumes: Existing `sys_tenant`, `sys_dict_type`, and `sys_dict_data` tables in database `ry_vue`.
-- Produces: Tables `content_article` and `content_article_tag`; dictionary types `content_article_category` and `content_article_tag`; one category and ten tag dictionary rows for tenant `000000`.
+**接口：**
+- 输入：数据库 `ry_vue` 中现有的 `sys_tenant`、`sys_dict_type` 和 `sys_dict_data` 表。
+- 输出：`content_article`、`content_article_tag` 两张表；`content_article_category`、`content_article_tag` 两个字典类型；默认租户 `000000` 下的一条分类字典数据和十条标签字典数据。
 
-- [ ] **Step 1: Verify the migration has not already been applied**
+- [ ] **步骤 1：确认迁移尚未执行**
 
-Run:
+执行：
 
 ```powershell
 docker exec postgres psql -U postgres -d ry_vue -c "select to_regclass('public.content_article') as article_table, to_regclass('public.content_article_tag') as tag_table; select dict_type, count(*) from sys_dict_type where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag') group by dict_type;"
 ```
 
-Expected before first execution: both table columns are null and the dictionary query returns zero rows.
+首次执行前的预期结果：两个表名均为 `null`，字典查询返回零行。
 
-- [ ] **Step 2: Create the migration with the exact SQL below**
+- [ ] **步骤 2：使用以下完整 SQL 创建迁移脚本**
 
-Create `script/sql/postgres/content_article.sql`:
+新建 `script/sql/postgres/content_article.sql`：
 
 ```sql
 -- ----------------------------
@@ -222,20 +222,20 @@ from numbered
 cross join base;
 ```
 
-- [ ] **Step 3: Run static migration checks**
+- [ ] **步骤 3：执行迁移脚本静态检查**
 
-Run:
+执行：
 
 ```powershell
 rg -n "create (unique )?index|foreign key|check\s*\(" script/sql/postgres/content_article.sql
 git diff --check -- script/sql/postgres/content_article.sql
 ```
 
-Expected: `rg` returns no matches and `git diff --check` returns no output.
+预期结果：`rg` 不返回匹配内容，`git diff --check` 不返回任何内容。
 
-- [ ] **Step 4: Execute the migration twice inside one rolled-back transaction**
+- [ ] **步骤 4：在同一个回滚事务内连续执行迁移脚本两次**
 
-Run:
+执行：
 
 ```powershell
 $sql = Get-Content -Raw 'script/sql/postgres/content_article.sql'
@@ -243,72 +243,71 @@ $validation = "begin;`n$sql`n$sql`nselect to_regclass('public.content_article'),
 $validation | docker exec -i postgres psql -v ON_ERROR_STOP=1 -U postgres -d ry_vue
 ```
 
-Expected: both tables resolve by name inside the transaction, dictionary type count is `2`, dictionary data count is `11`, and the transaction ends with `ROLLBACK`.
+预期结果：事务内两个表名均能正常解析，字典类型数量为 `2`，字典数据数量为 `11`，最后输出 `ROLLBACK`。
 
-- [ ] **Step 5: Verify rollback restored the original database state**
+- [ ] **步骤 5：确认回滚后数据库恢复原状**
 
-Run:
+执行：
 
 ```powershell
 docker exec postgres psql -U postgres -d ry_vue -c "select to_regclass('public.content_article') as article_table, to_regclass('public.content_article_tag') as tag_table; select count(*) as dict_type_count from sys_dict_type where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag'); select count(*) as dict_data_count from sys_dict_data where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag');"
 ```
 
-Expected: table names are null and both counts are `0`.
+预期结果：两个表名均为 `null`，两个数量均为 `0`。
 
-- [ ] **Step 6: Commit the validated migration**
+- [ ] **步骤 6：提交已验证的迁移脚本**
 
 ```powershell
 git add script/sql/postgres/content_article.sql
 git commit -m "feat: add content article database migration"
 ```
 
-### Task 2: Apply and verify the migration in the local database
+### 任务二：在本地数据库执行并验证迁移
 
-**Files:**
-- Read: `script/sql/postgres/content_article.sql`
+**文件：**
+- 读取：`script/sql/postgres/content_article.sql`
 
-**Interfaces:**
-- Consumes: The validated migration from Task 1 and Docker container `postgres` database `ry_vue`.
-- Produces: Applied article schema and default dictionary records in the local PostgreSQL database.
+**接口：**
+- 输入：任务一验证通过的迁移脚本，以及 Docker 容器 `postgres` 中的数据库 `ry_vue`。
+- 输出：本地 PostgreSQL 数据库中的文章表结构和默认字典数据。
 
-- [ ] **Step 1: Apply the migration with stop-on-error enabled**
+- [ ] **步骤 1：开启遇错即停并执行迁移脚本**
 
-Run:
+执行：
 
 ```powershell
 Get-Content -Raw 'script/sql/postgres/content_article.sql' | docker exec -i postgres psql -v ON_ERROR_STOP=1 -U postgres -d ry_vue
 ```
 
-Expected: both `CREATE TABLE` statements, comments, and dictionary inserts complete with exit code `0`.
+预期结果：两条 `CREATE TABLE`、字段注释和字典插入均执行成功，命令退出码为 `0`。
 
-- [ ] **Step 2: Verify table columns, defaults, and primary keys**
+- [ ] **步骤 2：验证表字段、默认值和主键**
 
-Run:
+执行：
 
 ```powershell
 docker exec postgres psql -U postgres -d ry_vue -c "select table_name, column_name, data_type, character_maximum_length, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name in ('content_article', 'content_article_tag') order by table_name, ordinal_position; select conrelid::regclass as table_name, conname, pg_get_constraintdef(oid) as definition from pg_constraint where conrelid in ('content_article'::regclass, 'content_article_tag'::regclass) order by conrelid::regclass::text, conname;"
 ```
 
-Expected: `content_article.tag_ids` is `varchar(200)`, `content` is `text`, `del_flag` defaults to `0`, and the only constraints are the two primary keys.
+预期结果：`content_article.tag_ids` 为 `varchar(200)`，`content` 为 `text`，`del_flag` 默认值为 `0`，两个表只存在各自的主键约束。
 
-- [ ] **Step 3: Verify dictionary types and entries**
+- [ ] **步骤 3：验证字典类型和字典数据**
 
-Run:
+执行：
 
 ```powershell
 docker exec postgres psql -U postgres -d ry_vue -c "select tenant_id, dict_name, dict_type from sys_dict_type where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag') order by dict_type; select dict_type, dict_sort, dict_label, dict_value, is_default from sys_dict_data where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag') order by dict_type, dict_sort;"
 ```
 
-Expected: one `公司新闻` category and ten tag rows are present.
+预期结果：存在一条“公司新闻”分类数据和十条标签数据。
 
-- [ ] **Step 4: Reapply the migration to prove production idempotency**
+- [ ] **步骤 4：再次执行迁移脚本，验证正式环境幂等性**
 
-Run:
+执行：
 
 ```powershell
 Get-Content -Raw 'script/sql/postgres/content_article.sql' | docker exec -i postgres psql -v ON_ERROR_STOP=1 -U postgres -d ry_vue
 docker exec postgres psql -U postgres -d ry_vue -c "select count(*) as dict_type_count from sys_dict_type where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag'); select count(*) as dict_data_count from sys_dict_data where tenant_id = '000000' and dict_type in ('content_article_category', 'content_article_tag');"
 ```
 
-Expected: exit code `0`, dictionary type count remains `2`, and dictionary data count remains `11`.
-
+预期结果：命令退出码为 `0`，字典类型数量仍为 `2`，字典数据数量仍为 `11`。
