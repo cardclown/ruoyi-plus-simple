@@ -3,6 +3,7 @@ package org.dromara.content.controller;
 import com.fasterxml.jackson.annotation.JsonView;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
+import jakarta.servlet.http.HttpServletResponse;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.content.domain.bo.ContentArticleBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
@@ -44,6 +45,23 @@ class ContentArticleControllerContractTest {
     }
 
     @Test
+    void flattensListQueryAndPaginationParametersForOpenApi() throws Exception {
+        Method method = ContentArticleController.class.getDeclaredMethod(
+            "list", ContentArticleQuery.class, PageQuery.class);
+
+        assertParameterObject(method, 0);
+        assertParameterObject(method, 1);
+    }
+
+    @Test
+    void flattensExportQueryParameterForOpenApi() throws Exception {
+        Method method = ContentArticleController.class.getDeclaredMethod(
+            "export", ContentArticleQuery.class, HttpServletResponse.class);
+
+        assertParameterObject(method, 0);
+    }
+
+    @Test
     void exposesFixedCategoryOptionsEndpoint() throws Exception {
         assertDictionaryEndpoint("categoryOptions", "/category-options");
     }
@@ -68,5 +86,11 @@ class ContentArticleControllerContractTest {
             "content:article:add",
             "content:article:edit"
         );
+    }
+
+    private void assertParameterObject(Method method, int parameterIndex) {
+        assertThat(method.getParameters()[parameterIndex].getAnnotations())
+            .extracting(annotation -> annotation.annotationType().getName())
+            .contains("org.springdoc.core.annotations.ParameterObject");
     }
 }

@@ -23,6 +23,7 @@ import org.dromara.content.domain.vo.ContentArticleDictOptionVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.service.IContentArticleService;
 import org.dromara.content.service.support.ContentArticleDictionaryService;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -83,7 +84,8 @@ public class ContentArticleController extends BaseController {
      */
     @SaCheckPermission("content:article:list")
     @GetMapping("/list")
-    public TableDataInfo<ContentArticleVo> list(ContentArticleQuery query, PageQuery pageQuery) {
+    public TableDataInfo<ContentArticleVo> list(@ParameterObject ContentArticleQuery query,
+                                                @ParameterObject PageQuery pageQuery) {
         return contentArticleService.queryPageList(query, pageQuery);
     }
 
@@ -93,7 +95,7 @@ public class ContentArticleController extends BaseController {
     @SaCheckPermission("content:article:export")
     @Log(title = "文章", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
-    public void export(ContentArticleQuery query, HttpServletResponse response) {
+    public void export(@ParameterObject ContentArticleQuery query, HttpServletResponse response) {
         List<ContentArticleVo> list = contentArticleService.queryList(query);
         ExcelUtil.exportExcel(list, "文章", ContentArticleVo.class, response);
     }
