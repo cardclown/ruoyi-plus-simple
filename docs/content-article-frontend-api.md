@@ -332,7 +332,7 @@ Path 入参：
 POST /content/article/export?title=新闻&categoryDictCode=2085567048592797698&status=1
 ```
 
-入参和列表筛选条件一致，常用字段为：
+导出只允许以下筛选字段：`title`、`categoryDictCode`、`status`。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
