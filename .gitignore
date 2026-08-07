@@ -50,3 +50,13 @@ nbdist/
 !*/build/*.xml
 
 .flattened-pom.xml
+
+######################################################################
+# Local Docker Compose environment
+
+script/docker/.env
+
+######################################################################
+# Local Git worktrees
+
+.worktrees/
