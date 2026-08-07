@@ -193,6 +193,17 @@ springdoc:
       name: Lion Li
       email: crazylionli@163.com
       url: https://gitee.com/dromara/RuoYi-Vue-Plus
+  # Swagger UI 统一鉴权配置
+  components:
+    security-schemes:
+      Authorization:
+        type: http
+        scheme: bearer
+        bearer-format: JWT
+      clientid:
+        type: apiKey
+        in: header
+        name: clientid
   # 接口文档分组
   group-configs:
     - group: 1.通用模块
