@@ -288,7 +288,8 @@ if ($LASTEXITCODE -ne 0) { throw '空验证桶清理失败' }
 执行：
 
 ```powershell
-$headers = curl.exe -sS -D - -o NUL 'http://127.0.0.1:9000/ruoyi/2026/08/07/68eaeba8fa52479a85d4afc08b59a43c.jpg'
+$headerLines = curl.exe -sS -D - -o NUL 'http://127.0.0.1:9000/ruoyi/2026/08/07/68eaeba8fa52479a85d4afc08b59a43c.jpg'
+$headers = $headerLines -join "`n"
 if ($headers -notmatch 'HTTP/1.1 200 OK') { throw "未返回 200：$headers" }
 if ($headers -notmatch '(?im)^Content-Type: image/jpeg') { throw "Content-Type 错误：$headers" }
 ```
@@ -300,7 +301,7 @@ if ($headers -notmatch '(?im)^Content-Type: image/jpeg') { throw "Content-Type �
 在仓库根目录执行：
 
 ```powershell
-git diff --check HEAD~2..HEAD -- '.gitignore' 'script/docker/.env.example' 'script/docker/docker-compose.yml'
+git diff --check HEAD~3..HEAD -- '.gitignore' 'script/docker/.env.example' 'script/docker/docker-compose.yml'
 Push-Location 'script/docker'
 docker compose config --quiet
 $composeExit = $LASTEXITCODE
