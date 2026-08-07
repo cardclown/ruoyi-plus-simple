@@ -6,7 +6,7 @@
 - 雪花 ID 均按字符串处理，包括 `articleId`、`dictCode`、`tagIds`、`coverOssId`，不要转换为 JavaScript `Number`。
 - 时间格式：`yyyy-MM-dd HH:mm:ss`
 - 文章状态：`0` 表示草稿，`1` 表示已发布。
-- 新增接口不要提交 `articleId`；该字段只属于修改请求，新增 ID由后端雪花算法生成。
+- 新增接口不要提交 `articleId`；该字段只属于修改请求，新增 ID 由后端雪花算法生成。
 - `createDept`、`createBy`、`createTime`、`updateBy`、`updateTime` 均由后端维护，任何写接口都不要提交。
 - 文章接口不使用通用 `params`；列表和导出只支持文档中明确列出的筛选字段。
 
