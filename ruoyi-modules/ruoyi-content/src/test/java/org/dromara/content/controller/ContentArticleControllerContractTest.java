@@ -4,11 +4,14 @@ import com.fasterxml.jackson.annotation.JsonView;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
 import jakarta.servlet.http.HttpServletResponse;
+import org.dromara.common.core.validate.AddGroup;
+import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.content.domain.bo.ContentArticleBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 
 import java.lang.reflect.Method;
@@ -34,6 +37,24 @@ class ContentArticleControllerContractTest {
 
         assertThat(jsonView).isNotNull();
         assertThat(jsonView.value()).containsExactly(ContentArticleBo.EditView.class);
+    }
+
+    @Test
+    void rejectsRegressionWhenAddValidationGroupIsRemovedOrChanged() throws Exception {
+        Method method = ContentArticleController.class.getDeclaredMethod("add", ContentArticleBo.class);
+        Validated validated = method.getParameters()[0].getAnnotation(Validated.class);
+
+        assertThat(validated).isNotNull();
+        assertThat(validated.value()).containsExactly(AddGroup.class);
+    }
+
+    @Test
+    void rejectsRegressionWhenEditValidationGroupIsRemovedOrChanged() throws Exception {
+        Method method = ContentArticleController.class.getDeclaredMethod("edit", ContentArticleBo.class);
+        Validated validated = method.getParameters()[0].getAnnotation(Validated.class);
+
+        assertThat(validated).isNotNull();
+        assertThat(validated.value()).containsExactly(EditGroup.class);
     }
 
     @Test
