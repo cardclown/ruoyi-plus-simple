@@ -52,7 +52,9 @@ public class ContentArticleController extends BaseController {
     private final ContentArticleDictionaryService dictionaryService;
 
     /**
-     * 查询当前租户的文章分类字典选项。
+     * 查询当前租户固定字典中的文章分类选项。
+     *
+     * @return 文章分类字典选项
      */
     @SaCheckPermission(value = {
         "content:article:list",
@@ -66,7 +68,9 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 查询当前租户的文章标签字典选项。
+     * 查询当前租户固定字典中的文章标签选项。
+     *
+     * @return 文章标签字典选项
      */
     @SaCheckPermission(value = {
         "content:article:list",
@@ -80,7 +84,11 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 查询文章列表
+     * 分页查询当前数据权限范围内的文章。
+     *
+     * @param query 文章业务筛选条件
+     * @param pageQuery 分页与排序参数
+     * @return 分页文章数据
      */
     @SaCheckPermission("content:article:list")
     @GetMapping("/list")
@@ -90,7 +98,10 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 导出文章列表
+     * 导出当前数据权限范围内的文章，仅使用标题、分类字典编码和状态三个筛选字段。
+     *
+     * @param query 文章业务筛选条件，仅使用 title、categoryDictCode 和 status
+     * @param response 导出文件写入响应
      */
     @SaCheckPermission("content:article:export")
     @Log(title = "文章", businessType = BusinessType.EXPORT)
@@ -101,9 +112,10 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 获取文章详细信息
+     * 查询当前租户和数据权限范围内的文章详情。
      *
-     * @param articleId 文章ID
+     * @param articleId 文章 ID
+     * @return 文章详情
      */
     @SaCheckPermission("content:article:query")
     @GetMapping("/{articleId}")
@@ -113,33 +125,42 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 新增文章
+     * 新增文章。请求使用 AddView 控制可绑定字段，并使用 AddGroup 执行字段校验；客户端传入的文章 ID 不进入绑定结果。
+     *
+     * @param bo 新增文章业务数据
+     * @return 新增结果
      */
     @SaCheckPermission("content:article:add")
     @Log(title = "文章", businessType = BusinessType.INSERT)
     @RepeatSubmit
     @PostMapping
+    // JsonView 控制可绑定字段，Validation Group 控制字段校验。
     public R<Void> add(@JsonView(ContentArticleBo.AddView.class)
                        @Validated(AddGroup.class) @RequestBody ContentArticleBo bo) {
         return toAjax(contentArticleService.insertByBo(bo));
     }
 
     /**
-     * 修改文章
+     * 修改文章。请求使用 EditView 控制可绑定字段，并使用 EditGroup 执行字段校验；文章 ID 必填。
+     *
+     * @param bo 修改文章业务数据
+     * @return 修改结果
      */
     @SaCheckPermission("content:article:edit")
     @Log(title = "文章", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping
+    // JsonView 控制可绑定字段，Validation Group 控制字段校验。
     public R<Void> edit(@JsonView(ContentArticleBo.EditView.class)
                         @Validated(EditGroup.class) @RequestBody ContentArticleBo bo) {
         return toAjax(contentArticleService.updateByBo(bo));
     }
 
     /**
-     * 逻辑删除文章
+     * 逻辑删除文章，并对文章 ID 集合进行数据权限和存在性校验。
      *
-     * @param articleIds 文章ID集合
+     * @param articleIds 文章 ID 集合
+     * @return 删除结果
      */
     @SaCheckPermission("content:article:remove")
     @Log(title = "文章", businessType = BusinessType.DELETE)
