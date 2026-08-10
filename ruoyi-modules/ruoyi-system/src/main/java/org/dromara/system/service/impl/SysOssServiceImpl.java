@@ -53,6 +53,7 @@ import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -72,6 +73,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     private final OssClientProvider ossClientProvider;
     private final OssMediaUploadPolicy mediaUploadPolicy;
     private final OssTemporaryObjectCleaner temporaryObjectCleaner;
+    private final AtomicLong temporaryCleanupCursor = new AtomicLong();
 
     /**
      * 查询OSS对象存储列表
@@ -406,14 +408,20 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         if (cutoff == null) {
             throw new IllegalArgumentException("cutoff must not be null");
         }
+        long cursor = temporaryCleanupCursor.get();
         List<SysOss> candidates = TenantHelper.ignore(() -> {
             LambdaQueryWrapper<SysOss> query = Wrappers.lambdaQuery();
             query.lt(SysOss::getCreateTime, cutoff)
                 .like(SysOss::getExt1, "userUpload")
+                .gt(cursor > 0L, SysOss::getOssId, cursor)
                 .orderByAsc(SysOss::getOssId)
                 .last("LIMIT " + TEMP_CLEANUP_BATCH_SIZE);
             return baseMapper.selectList(query);
         });
+        if (candidates.isEmpty()) {
+            temporaryCleanupCursor.set(0L);
+            return;
+        }
         for (SysOss candidate : candidates) {
             try {
                 temporaryObjectCleaner.cleanCandidate(candidate.getOssId(), cutoff);
@@ -421,6 +429,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
                 log.warn("Unable to clean temporary OSS object {}: {}", candidate.getOssId(), exception.getMessage());
             }
         }
+        temporaryCleanupCursor.set(candidates.size() < TEMP_CLEANUP_BATCH_SIZE
+            ? 0L : candidates.get(candidates.size() - 1).getOssId());
     }
 
     /**

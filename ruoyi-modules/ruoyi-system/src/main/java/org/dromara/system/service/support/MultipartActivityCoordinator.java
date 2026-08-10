@@ -3,8 +3,7 @@ package org.dromara.system.service.support;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.StampedLock;
 
 /**
  * Coordinates multipart request activity with fallback temporary-file cleanup.
@@ -12,32 +11,32 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 @Component
 public class MultipartActivityCoordinator {
 
-    private final ReentrantReadWriteLock activityLock = new ReentrantReadWriteLock(true);
+    private final StampedLock activityLock = new StampedLock();
 
     public Lease beginRequest() {
-        Lock requestLock = activityLock.readLock();
-        requestLock.lock();
-        return new Lease(requestLock);
+        return new Lease(activityLock, activityLock.readLock());
     }
 
     public Lease tryBeginCleanup() {
-        Lock cleanupLock = activityLock.writeLock();
-        return cleanupLock.tryLock() ? new Lease(cleanupLock) : null;
+        long stamp = activityLock.tryWriteLock();
+        return stamp == 0L ? null : new Lease(activityLock, stamp);
     }
 
     public static final class Lease implements AutoCloseable {
 
-        private final Lock lock;
+        private final StampedLock lock;
+        private final long stamp;
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        private Lease(Lock lock) {
+        private Lease(StampedLock lock, long stamp) {
             this.lock = lock;
+            this.stamp = stamp;
         }
 
         @Override
         public void close() {
             if (closed.compareAndSet(false, true)) {
-                lock.unlock();
+                lock.unlock(stamp);
             }
         }
     }

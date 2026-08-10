@@ -24,7 +24,7 @@ public class OssMediaUploadPolicy {
     public static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024;
 
     private static final Set<String> MP4_BRANDS = Set.of(
-        "isom", "iso2", "mp41", "mp42", "avc1", "M4V ", "MSNV", "3gp4", "3gp5"
+        "isom", "iso2", "iso5", "iso6", "mp41", "mp42", "avc1", "M4V ", "MSNV", "3gp4", "3gp5"
     );
 
     private static final List<MediaFormat> FORMATS = List.of(
@@ -123,22 +123,94 @@ public class OssMediaUploadPolicy {
     }
 
     private static boolean isMp4(byte[] bytes) {
-        if (!equalsAt(bytes, 4, ascii("ftyp")) || bytes.length < 12) {
+        int boxSize = isoBoxSize(bytes);
+        if (boxSize < 16 || "qt  ".equals(asciiAt(bytes, 8))) {
             return false;
         }
-        return MP4_BRANDS.contains(new String(bytes, 8, 4, StandardCharsets.US_ASCII));
+        if (MP4_BRANDS.contains(asciiAt(bytes, 8))) {
+            return true;
+        }
+        for (int offset = 16; offset + 4 <= boxSize; offset += 4) {
+            if (MP4_BRANDS.contains(asciiAt(bytes, offset))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isMov(byte[] bytes) {
-        return equalsAt(bytes, 4, ascii("ftyp")) && equalsAt(bytes, 8, ascii("qt  "));
+        return isoBoxSize(bytes) >= 16 && equalsAt(bytes, 8, ascii("qt  "));
     }
 
     private static boolean isEbml(byte[] bytes, String documentType) {
         if (!startsWith(bytes, new byte[]{0x1a, 0x45, (byte) 0xdf, (byte) 0xa3})) {
             return false;
         }
-        return new String(bytes, StandardCharsets.ISO_8859_1)
-            .toLowerCase(Locale.ROOT).contains(documentType);
+        Vint headerSize = readVint(bytes, 4, false);
+        if (headerSize == null) {
+            return false;
+        }
+        int cursor = 4 + headerSize.length();
+        long declaredEnd = cursor + headerSize.value();
+        int headerEnd = (int) Math.min(bytes.length, declaredEnd);
+        while (cursor < headerEnd) {
+            Vint elementId = readVint(bytes, cursor, true);
+            if (elementId == null) {
+                return false;
+            }
+            int sizeOffset = cursor + elementId.length();
+            Vint elementSize = readVint(bytes, sizeOffset, false);
+            if (elementSize == null || elementSize.value() > Integer.MAX_VALUE) {
+                return false;
+            }
+            int valueOffset = sizeOffset + elementSize.length();
+            long valueEnd = (long) valueOffset + elementSize.value();
+            if (valueEnd > headerEnd) {
+                return false;
+            }
+            if (elementId.value() == 0x4282L) {
+                int length = (int) elementSize.value();
+                return documentType.equals(new String(bytes, valueOffset, length, StandardCharsets.US_ASCII));
+            }
+            cursor = (int) valueEnd;
+        }
+        return false;
+    }
+
+    private static int isoBoxSize(byte[] bytes) {
+        if (bytes.length < 16 || !equalsAt(bytes, 4, ascii("ftyp"))) {
+            return -1;
+        }
+        long size = ((long) Byte.toUnsignedInt(bytes[0]) << 24)
+            | ((long) Byte.toUnsignedInt(bytes[1]) << 16)
+            | ((long) Byte.toUnsignedInt(bytes[2]) << 8)
+            | Byte.toUnsignedInt(bytes[3]);
+        return size >= 16 && size <= bytes.length && (size - 16) % 4 == 0 ? (int) size : -1;
+    }
+
+    private static String asciiAt(byte[] bytes, int offset) {
+        return new String(bytes, offset, 4, StandardCharsets.US_ASCII);
+    }
+
+    private static Vint readVint(byte[] bytes, int offset, boolean preserveMarker) {
+        if (offset < 0 || offset >= bytes.length) {
+            return null;
+        }
+        int first = Byte.toUnsignedInt(bytes[offset]);
+        int marker = 0x80;
+        int length = 1;
+        while (length <= 8 && (first & marker) == 0) {
+            marker >>>= 1;
+            length++;
+        }
+        if (length > 8 || offset + length > bytes.length) {
+            return null;
+        }
+        long value = preserveMarker ? first : first & (marker - 1);
+        for (int index = 1; index < length; index++) {
+            value = (value << 8) | Byte.toUnsignedInt(bytes[offset + index]);
+        }
+        return new Vint(length, value);
     }
 
     private static boolean isWmv(byte[] bytes) {
@@ -165,6 +237,9 @@ public class OssMediaUploadPolicy {
 
     private record MediaFormat(OssFileType fileType, Set<String> extensions, String canonicalMime,
                                Set<String> mimeAliases, SignatureMatcher matcher) {
+    }
+
+    private record Vint(int length, long value) {
     }
 
     @FunctionalInterface

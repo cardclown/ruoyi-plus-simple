@@ -85,6 +85,15 @@ class OssMediaUploadPolicyTest {
     }
 
     @Test
+    void rejectsEbmlFreeTextThatIsNotADocTypeElement() throws IOException {
+        MultipartFile file = mockFile("a.webm", "video/webm", 32L, ebmlFreeText("webm"));
+
+        assertThatThrownBy(() -> policy.validate(file, OssFileType.VIDEO))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("视频文件内容与格式不匹配");
+    }
+
+    @Test
     void readsNoMoreThanTheProbeLimit() throws IOException {
         AtomicInteger bytesRead = new AtomicInteger();
         InputStream endless = new InputStream() {
@@ -114,6 +123,9 @@ class OssMediaUploadPolicyTest {
             Arguments.of(OssFileType.IMAGE, "a.gif", "image/gif", ascii("GIF89a"), "image/gif"),
             Arguments.of(OssFileType.IMAGE, "a.webp", "image/webp", riff("WEBP"), "image/webp"),
             Arguments.of(OssFileType.VIDEO, "a.mp4", "application/mp4", mp4(), "video/mp4"),
+            Arguments.of(OssFileType.VIDEO, "a.mp4", "video/mp4", iso("iso5"), "video/mp4"),
+            Arguments.of(OssFileType.VIDEO, "a.mp4", "video/mp4", iso("iso6"), "video/mp4"),
+            Arguments.of(OssFileType.VIDEO, "a.mp4", "video/mp4", iso("zzzz", "iso6"), "video/mp4"),
             Arguments.of(OssFileType.VIDEO, "a.mov", "video/quicktime", mov(), "video/quicktime"),
             Arguments.of(OssFileType.VIDEO, "a.avi", "video/avi", riff("AVI "), "video/x-msvideo"),
             Arguments.of(OssFileType.VIDEO, "a.webm", "video/webm", ebml("webm"), "video/webm"),
@@ -155,11 +167,18 @@ class OssMediaUploadPolicyTest {
         return iso("qt  ");
     }
 
-    private static byte[] iso(String brand) {
-        byte[] bytes = new byte[16];
-        bytes[3] = 16;
+    private static byte[] iso(String brand, String... compatibleBrands) {
+        byte[] bytes = new byte[16 + compatibleBrands.length * 4];
+        int size = bytes.length;
+        bytes[0] = (byte) (size >>> 24);
+        bytes[1] = (byte) (size >>> 16);
+        bytes[2] = (byte) (size >>> 8);
+        bytes[3] = (byte) size;
         System.arraycopy(ascii("ftyp"), 0, bytes, 4, 4);
         System.arraycopy(ascii(brand), 0, bytes, 8, 4);
+        for (int index = 0; index < compatibleBrands.length; index++) {
+            System.arraycopy(ascii(compatibleBrands[index]), 0, bytes, 16 + index * 4, 4);
+        }
         return bytes;
     }
 
@@ -170,7 +189,26 @@ class OssMediaUploadPolicyTest {
         bytes[1] = 0x45;
         bytes[2] = (byte) 0xdf;
         bytes[3] = (byte) 0xa3;
+        bytes[4] = (byte) (0x80 | (3 + type.length));
+        bytes[5] = 0x42;
+        bytes[6] = (byte) 0x82;
+        bytes[7] = (byte) (0x80 | type.length);
         System.arraycopy(type, 0, bytes, 8, type.length);
+        return bytes;
+    }
+
+    private static byte[] ebmlFreeText(String text) {
+        byte[] value = ascii("unrelated-" + text);
+        byte[] bytes = new byte[8 + value.length];
+        bytes[0] = 0x1a;
+        bytes[1] = 0x45;
+        bytes[2] = (byte) 0xdf;
+        bytes[3] = (byte) 0xa3;
+        bytes[4] = (byte) (0x80 | (3 + value.length));
+        bytes[5] = 0x42;
+        bytes[6] = (byte) 0x86;
+        bytes[7] = (byte) (0x80 | value.length);
+        System.arraycopy(value, 0, bytes, 8, value.length);
         return bytes;
     }
 

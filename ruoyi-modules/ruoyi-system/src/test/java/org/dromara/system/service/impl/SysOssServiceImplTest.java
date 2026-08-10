@@ -33,7 +33,10 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,6 +46,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -335,6 +339,35 @@ class SysOssServiceImplTest {
 
         verify(temporaryObjectCleaner).cleanCandidate(eq(10L), any());
         verify(temporaryObjectCleaner).cleanCandidate(eq(11L), any());
+    }
+
+    @Test
+    void expiredCleanupRotatesPastAFullPageAndRetriesEarlyFailuresAfterWrap() {
+        List<SysOss> firstPage = LongStream.rangeClosed(1L, 200L)
+            .mapToObj(id -> oss(id, null))
+            .toList();
+        SysOss laterCandidate = oss(201L, null);
+        AtomicInteger queryNumber = new AtomicInteger();
+        List<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysOss>> queries = new ArrayList<>();
+        when(mapper.selectList(any())).thenAnswer(invocation -> {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysOss> query = invocation.getArgument(0);
+            queries.add(query);
+            return queryNumber.getAndIncrement() == 1 ? List.of(laterCandidate) : firstPage;
+        });
+        doThrow(new IllegalStateException("persistent object-store failure")).when(temporaryObjectCleaner)
+            .cleanCandidate(eq(1L), any());
+
+        java.util.Date cutoff = new java.util.Date(1_786_291_200_000L);
+        service.deleteExpiredTemps(cutoff);
+        service.deleteExpiredTemps(cutoff);
+        service.deleteExpiredTemps(cutoff);
+
+        verify(temporaryObjectCleaner).cleanCandidate(eq(201L), any());
+        verify(temporaryObjectCleaner, times(2)).cleanCandidate(eq(1L), any());
+        assertThat(queries.get(1).getExpression().getNormal().size())
+            .isGreaterThan(queries.get(0).getExpression().getNormal().size());
+        assertThat(queries.get(2).getExpression().getNormal().size())
+            .isEqualTo(queries.get(0).getExpression().getNormal().size());
     }
 
     @Test
