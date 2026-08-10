@@ -3,6 +3,7 @@ package org.dromara.system.domain.bo;
 import io.github.linpeilie.annotations.AutoMapper;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -39,7 +40,8 @@ public class SysUserBo extends BaseEntity {
      */
     @Xss(message = "用户账号不能包含脚本字符")
     @NotBlank(message = "用户账号不能为空")
-    @Size(min = 2, max = 30, message = "用户账号长度必须在{min}到{max}个字符之间")
+    @Size(min = 2, max = 20, message = "用户账号长度必须在{min}到{max}个字符之间")
+    @Pattern(regexp = "^[A-Za-z0-9]+$", message = "用户账号只能包含英文字母和数字")
     private String userName;
 
     /**
