@@ -14,7 +14,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -99,10 +101,39 @@ class OssClientStreamingContractTest {
     }
 
     @Test
-    void uploadLargerThan32MiBUsesAutomaticMultipart() throws Exception {
+    void uploadExactly32MiBUsesSinglePut() throws Exception {
         AtomicReference<String> method = new AtomicReference<>();
         AtomicReference<String> query = new AtomicReference<>();
-        AtomicInteger partNumber = new AtomicInteger();
+        AtomicReference<Long> uploadedLength = new AtomicReference<>();
+        AtomicInteger requestCount = new AtomicInteger();
+        server = server(exchange -> {
+            requestCount.incrementAndGet();
+            method.set(exchange.getRequestMethod());
+            query.set(exchange.getRequestURI().getRawQuery());
+            exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
+            uploadedLength.set(decodedContentLength(exchange));
+            exchange.getResponseHeaders().add("ETag", "\"single-put-etag\"");
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        OssClient client = clientFor(server);
+        long length = 32L * 1024 * 1024;
+
+        UploadResult result = client.upload(new ZeroInputStream(length), "uploads/threshold.bin", length,
+            "application/octet-stream");
+
+        assertThat(requestCount).hasValue(1);
+        assertThat(method).hasValue("PUT");
+        assertThat(query.get()).isNull();
+        assertThat(uploadedLength).hasValue(length);
+        assertThat(result.getETag()).isEqualTo("\"single-put-etag\"");
+    }
+
+    @Test
+    void uploadOneByteOver32MiBUses32MiBMultipartParts() throws Exception {
+        AtomicReference<String> method = new AtomicReference<>();
+        AtomicReference<String> query = new AtomicReference<>();
+        Map<Integer, Long> partLengths = new ConcurrentHashMap<>();
         server = server(exchange -> {
             String requestQuery = exchange.getRequestURI().getRawQuery();
             if ("POST".equals(exchange.getRequestMethod()) && requestQuery != null
@@ -112,8 +143,11 @@ class OssClientStreamingContractTest {
                 respondWithMultipartUpload(exchange);
             } else if ("PUT".equals(exchange.getRequestMethod()) && requestQuery != null
                 && requestQuery.contains("partNumber")) {
+                int partNumber = queryParameterAsInt(requestQuery, "partNumber");
                 exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
-                exchange.getResponseHeaders().add("ETag", "\"part-" + partNumber.incrementAndGet() + "\"");
+                long partLength = decodedContentLength(exchange);
+                partLengths.put(partNumber, partLength);
+                exchange.getResponseHeaders().add("ETag", "\"part-" + partNumber + "\"");
                 exchange.sendResponseHeaders(200, -1);
                 exchange.close();
             } else if ("POST".equals(exchange.getRequestMethod()) && requestQuery != null
@@ -133,7 +167,10 @@ class OssClientStreamingContractTest {
 
         assertThat(method).hasValue("POST");
         assertThat(query.get()).contains("uploads");
-        assertThat(partNumber).hasValue(2);
+        assertThat(partLengths)
+            .containsEntry(1, 32L * 1024 * 1024)
+            .containsEntry(2, 1L)
+            .hasSize(2);
         assertThat(result.getETag()).isEqualTo("\"complete-etag\"");
     }
 
@@ -182,6 +219,24 @@ class OssClientStreamingContractTest {
         exchange.sendResponseHeaders(200, response.length);
         exchange.getResponseBody().write(response);
         exchange.close();
+    }
+
+    private static int queryParameterAsInt(String query, String name) {
+        String prefix = name + "=";
+        for (String parameter : query.split("&")) {
+            if (parameter.startsWith(prefix)) {
+                return Integer.parseInt(parameter.substring(prefix.length()));
+            }
+        }
+        throw new IllegalArgumentException("missing query parameter: " + name);
+    }
+
+    private static long decodedContentLength(HttpExchange exchange) {
+        String decodedLength = exchange.getRequestHeaders().getFirst("x-amz-decoded-content-length");
+        if (decodedLength != null) {
+            return Long.parseLong(decodedLength);
+        }
+        return Long.parseLong(exchange.getRequestHeaders().getFirst("Content-Length"));
     }
 
     private static void await(CountDownLatch latch) throws IOException {

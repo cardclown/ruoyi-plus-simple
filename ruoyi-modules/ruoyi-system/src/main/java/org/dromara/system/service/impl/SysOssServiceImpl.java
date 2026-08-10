@@ -252,10 +252,13 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         String originalfileName = file.getOriginalFilename();
         String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
         OssClient storage = ossClientProvider.current();
-        UploadResult uploadResult;
+        UploadResult uploadResult = null;
         try (InputStream inputStream = file.getInputStream()) {
             uploadResult = storage.uploadSuffix(inputStream, suffix, file.getSize(), file.getContentType());
         } catch (IOException e) {
+            if (uploadResult != null) {
+                deleteUploadedObject(storage, uploadResult, e);
+            }
             ServiceException exception = new ServiceException("读取上传文件失败");
             exception.initCause(e);
             throw exception;
@@ -265,8 +268,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ext1.setContentType(file.getContentType());
         ext1.setIsTemp(true);
         // 保存文件信息
-        return buildResultEntityWithCompensation(
-            originalfileName, suffix, storage, uploadResult, ext1);
+        return buildResultEntity(originalfileName, suffix, storage, uploadResult, ext1);
     }
 
     /**
@@ -289,39 +291,41 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ext1.setFileSize(length);
         ext1.setIsTemp(true);
         // 保存文件信息
-        return buildResultEntityWithCompensation(
-            originalfileName, suffix, storage, uploadResult, ext1);
-    }
-
-    private SysOssVo buildResultEntityWithCompensation(String originalfileName, String suffix, OssClient storage,
-                                                         UploadResult uploadResult, SysOssExt ext1) {
-        try {
-            return buildResultEntity(
-                originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
-        } catch (RuntimeException exception) {
-            try {
-                storage.delete(uploadResult.getUrl());
-            } catch (RuntimeException deleteException) {
-                exception.addSuppressed(deleteException);
-            }
-            throw exception;
-        }
+        return buildResultEntity(originalfileName, suffix, storage, uploadResult, ext1);
     }
 
     @NotNull
-    private SysOssVo buildResultEntity(String originalfileName, String suffix, String configKey, UploadResult uploadResult, SysOssExt ext1) {
+    private SysOssVo buildResultEntity(String originalfileName, String suffix, OssClient storage,
+                                       UploadResult uploadResult, SysOssExt ext1) {
         SysOss oss = new SysOss();
         oss.setUrl(uploadResult.getUrl());
         oss.setFileSuffix(suffix);
         oss.setFileName(uploadResult.getFilename());
         oss.setOriginalName(originalfileName);
-        oss.setService(configKey);
+        oss.setService(storage.getConfigKey());
         oss.setExt1(JsonUtils.toJsonString(ext1));
-        if (baseMapper.insert(oss) != 1) {
-            throw new ServiceException("文件信息保存失败");
-        }
+        persistResultEntity(storage, uploadResult, oss);
         SysOssVo sysOssVo = MapstructUtils.convert(oss, SysOssVo.class);
         return this.matchingUrl(sysOssVo);
+    }
+
+    private void persistResultEntity(OssClient storage, UploadResult uploadResult, SysOss oss) {
+        try {
+            if (baseMapper.insert(oss) != 1) {
+                throw new ServiceException("文件信息保存失败");
+            }
+        } catch (RuntimeException exception) {
+            deleteUploadedObject(storage, uploadResult, exception);
+            throw exception;
+        }
+    }
+
+    private void deleteUploadedObject(OssClient storage, UploadResult uploadResult, Throwable originalException) {
+        try {
+            storage.delete(uploadResult.getUrl());
+        } catch (RuntimeException deleteException) {
+            originalException.addSuppressed(deleteException);
+        }
     }
 
     /**

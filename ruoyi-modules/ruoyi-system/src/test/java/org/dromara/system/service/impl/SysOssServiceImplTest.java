@@ -187,6 +187,66 @@ class SysOssServiceImplTest {
     }
 
     @Test
+    void uploadDeletesObjectWhenSourceCloseFailsAfterObjectStoreCompletion() {
+        byte[] content = {1, 2, 3};
+        MockMultipartFile file = new MockMultipartFile("file", "cover.png", "image/png", content) {
+            @Override
+            public byte[] getBytes() {
+                throw new AssertionError("MultipartFile.getBytes() must not be used for uploads");
+            }
+
+            @Override
+            public InputStream getInputStream() {
+                return new ByteArrayInputStream(content) {
+                    @Override
+                    public void close() throws IOException {
+                        throw new IOException("close failed");
+                    }
+                };
+            }
+        };
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
+
+        assertThatThrownBy(() -> service.upload(file))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("读取上传文件失败")
+            .hasCauseInstanceOf(IOException.class)
+            .hasRootCauseMessage("close failed");
+
+        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
+        verify(mapper, never()).insert(any(SysOss.class));
+    }
+
+    @Test
+    void uploadKeepsObjectWhenPostInsertUrlMappingFails() {
+        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
+        when(ossClient.getConfigKey()).thenReturn("minio");
+        when(mapper.insert(any(SysOss.class))).thenReturn(1);
+        when(ossClientProvider.byService("minio"))
+            .thenThrow(new IllegalStateException("post-insert mapping failed"));
+
+        assertThatThrownBy(() -> service.upload(file))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("post-insert mapping failed");
+
+        verify(mapper).insert(any(SysOss.class));
+        verify(ossClient, never()).delete("https://bucket.example/uploads/cover.png");
+    }
+
+    @Test
     void deleteByIdsDoesNotRemoveDatabaseRowsWhenObjectDeletionFails() {
         SysOss stored = oss(10L, null);
         stored.setService("minio");
