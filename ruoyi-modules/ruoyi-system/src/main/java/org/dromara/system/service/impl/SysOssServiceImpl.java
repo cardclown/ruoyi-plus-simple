@@ -260,6 +260,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         SysOssExt ext1 = new SysOssExt();
         ext1.setFileSize(file.getSize());
         ext1.setContentType(file.getContentType());
+        ext1.setIsTemp(true);
         // 保存文件信息
         return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
     }
@@ -282,6 +283,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         UploadResult uploadResult = storage.uploadSuffix(file, suffix);
         SysOssExt ext1 = new SysOssExt();
         ext1.setFileSize(length);
+        ext1.setIsTemp(true);
         // 保存文件信息
         return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
     }

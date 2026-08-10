@@ -1,11 +1,15 @@
 package org.dromara.system.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.linpeilie.Converter;
 import org.dromara.common.core.utils.SpringUtils;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.oss.core.OssClient;
+import org.dromara.common.oss.entity.UploadResult;
 import org.dromara.system.domain.SysOss;
+import org.dromara.system.domain.SysOssExt;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.support.OssClientProvider;
@@ -21,13 +25,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,11 +59,28 @@ class SysOssServiceImplTest {
     @Captor
     private ArgumentCaptor<List<SysOss>> ossListCaptor;
 
+    @Captor
+    private ArgumentCaptor<SysOss> ossCaptor;
+
     @BeforeAll
     static void setUpSpringUtilities() {
         GenericApplicationContext context = new GenericApplicationContext();
+        Converter converter = mock(Converter.class);
+        when(converter.convert(any(SysOss.class), eq(SysOssVo.class))).thenAnswer(invocation -> {
+            SysOss source = invocation.getArgument(0);
+            SysOssVo target = new SysOssVo();
+            target.setOssId(source.getOssId());
+            target.setFileName(source.getFileName());
+            target.setOriginalName(source.getOriginalName());
+            target.setFileSuffix(source.getFileSuffix());
+            target.setUrl(source.getUrl());
+            target.setExt1(source.getExt1());
+            target.setService(source.getService());
+            return target;
+        });
         context.getBeanFactory().registerSingleton("objectMapper", new ObjectMapper());
         context.getBeanFactory().registerSingleton("cacheManager", new ConcurrentMapCacheManager());
+        context.getBeanFactory().registerSingleton("converter", converter);
         context.refresh();
         new SpringUtils().setApplicationContext(context);
     }
@@ -110,6 +135,30 @@ class SysOssServiceImplTest {
             assertThat(oss.getExt1()).contains("\"refId\":\"100\"");
             assertThat(oss.getExt1()).contains("\"isTemp\":false");
         });
+    }
+
+    @Test
+    void uploadPersistsNewAttachmentAsTemporary() {
+        MockMultipartFile file = new MockMultipartFile("file", "cover.png", "image/png", new byte[]{1, 2, 3});
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(byte[].class), eq(".png"), eq("image/png"))).thenReturn(uploadResult);
+        when(ossClient.getConfigKey()).thenReturn("minio");
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+
+        SysOssVo result = service.upload(file);
+
+        verify(mapper).insert(ossCaptor.capture());
+        SysOssExt ext = JsonUtils.parseObject(ossCaptor.getValue().getExt1(), SysOssExt.class);
+        assertThat(ext)
+            .extracting(SysOssExt::getFileSize, SysOssExt::getContentType, SysOssExt::getIsTemp)
+            .containsExactly(3L, "image/png", true);
+        assertThat(result)
+            .extracting(SysOssVo::getFileName, SysOssVo::getOriginalName, SysOssVo::getUrl)
+            .containsExactly("uploads/cover.png", "cover.png", "https://bucket.example/uploads/cover.png");
     }
 
     @Test
