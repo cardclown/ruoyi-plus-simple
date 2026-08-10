@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.constant.CacheNames;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
@@ -30,7 +31,9 @@ import org.dromara.system.domain.bo.SysOssBo;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.ISysOssService;
+import org.dromara.system.service.support.ArticleOssUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
+import org.dromara.common.tenant.helper.TenantHelper;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
@@ -44,6 +47,7 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,10 +61,14 @@ import java.util.stream.Collectors;
  */
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class SysOssServiceImpl implements ISysOssService, OssService {
+
+    private static final int TEMP_CLEANUP_BATCH_SIZE = 200;
 
     private final SysOssMapper baseMapper;
     private final OssClientProvider ossClientProvider;
+    private final ArticleOssUploadPolicy articleOssUploadPolicy;
 
     /**
      * 查询OSS对象存储列表
@@ -246,9 +254,15 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
      */
     @Override
     public SysOssVo upload(MultipartFile file) {
+        return upload(file, null);
+    }
+
+    @Override
+    public SysOssVo upload(MultipartFile file, String bizType) {
         if (ObjectUtil.isNull(file) || file.isEmpty()) {
             throw new ServiceException("上传文件不能为空");
         }
+        articleOssUploadPolicy.validate(file, bizType);
         String originalfileName = file.getOriginalFilename();
         String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
         OssClient storage = ossClientProvider.current();
@@ -267,6 +281,10 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ext1.setFileSize(file.getSize());
         ext1.setContentType(file.getContentType());
         ext1.setIsTemp(true);
+        if (articleOssUploadPolicy.isArticleBizType(bizType)) {
+            ext1.setBizType(bizType);
+            ext1.setSource("userUpload");
+        }
         // 保存文件信息
         return buildResultEntity(originalfileName, suffix, storage, uploadResult, ext1);
     }
@@ -373,6 +391,47 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             throw new ServiceException("附件删除失败");
         }
         ossList.forEach(oss -> CacheUtils.evict(CacheNames.SYS_OSS, oss.getOssId()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteExpiredArticleTemps(Date cutoff) {
+        if (cutoff == null) {
+            throw new IllegalArgumentException("cutoff must not be null");
+        }
+        TenantHelper.ignore(() -> {
+            LambdaQueryWrapper<SysOss> query = Wrappers.lambdaQuery();
+            query.lt(SysOss::getCreateTime, cutoff)
+                .and(group -> group
+                    .like(SysOss::getExt1, ArticleOssUploadPolicy.ARTICLE_ATTACHMENT)
+                    .or()
+                    .like(SysOss::getExt1, ArticleOssUploadPolicy.ARTICLE_VIDEO))
+                .orderByAsc(SysOss::getCreateTime)
+                .last("LIMIT " + TEMP_CLEANUP_BATCH_SIZE + " FOR UPDATE");
+            for (SysOss oss : baseMapper.selectList(query)) {
+                SysOssExt ext;
+                try {
+                    ext = parseExt(oss.getExt1());
+                } catch (RuntimeException exception) {
+                    log.warn("Unable to parse OSS metadata while cleaning temporary object: {}", oss.getOssId(), exception);
+                    continue;
+                }
+                if (!isExpiredUnboundArticleTemp(ext)) {
+                    continue;
+                }
+                ossClientProvider.byService(oss.getService()).delete(oss.getUrl());
+                if (baseMapper.deleteById(oss.getOssId()) != 1) {
+                    throw new ServiceException("临时附件记录删除失败");
+                }
+                CacheUtils.evict(CacheNames.SYS_OSS, oss.getOssId());
+            }
+        });
+    }
+
+    private boolean isExpiredUnboundArticleTemp(SysOssExt ext) {
+        return Boolean.TRUE.equals(ext.getIsTemp())
+            && StringUtils.isBlank(ext.getRefId())
+            && articleOssUploadPolicy.isArticleBizType(ext.getBizType());
     }
 
     /**

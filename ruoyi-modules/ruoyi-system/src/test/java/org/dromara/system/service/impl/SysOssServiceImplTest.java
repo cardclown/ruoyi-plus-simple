@@ -12,6 +12,7 @@ import org.dromara.system.domain.SysOss;
 import org.dromara.system.domain.SysOssExt;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.mapper.SysOssMapper;
+import org.dromara.system.service.support.ArticleOssUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
@@ -30,6 +32,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Date;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -90,7 +94,7 @@ class SysOssServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new SysOssServiceImpl(mapper, ossClientProvider);
+        service = new SysOssServiceImpl(mapper, ossClientProvider, new ArticleOssUploadPolicy());
     }
 
     @Test
@@ -164,6 +168,29 @@ class SysOssServiceImplTest {
         assertThat(result)
             .extracting(SysOssVo::getFileName, SysOssVo::getOriginalName, SysOssVo::getUrl)
             .containsExactly("uploads/cover.png", "cover.png", "https://bucket.example/uploads/cover.png");
+    }
+
+    @Test
+    void articleUploadPersistsItsBusinessTypeAndSource() {
+        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
+        when(ossClient.getConfigKey()).thenReturn("minio");
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(mapper.insert(any(SysOss.class))).thenReturn(1);
+
+        service.upload(file, "article_attachment");
+
+        verify(mapper).insert(ossCaptor.capture());
+        SysOssExt ext = JsonUtils.parseObject(ossCaptor.getValue().getExt1(), SysOssExt.class);
+        assertThat(ext)
+            .extracting(SysOssExt::getBizType, SysOssExt::getSource, SysOssExt::getIsTemp)
+            .containsExactly("article_attachment", "userUpload", true);
     }
 
     @Test
@@ -284,6 +311,41 @@ class SysOssServiceImplTest {
     }
 
     @Test
+    void expiredCleanupDeletesOnlyUnboundTemporaryArticleObjectsBeforeTheirRows() {
+        SysOss eligible = storedOss(10L, "{\"bizType\":\"article_attachment\",\"isTemp\":true}");
+        SysOss bound = storedOss(11L,
+            "{\"bizType\":\"article_video\",\"isTemp\":true,\"refId\":\"article-1\"}");
+        SysOss permanent = storedOss(12L,
+            "{\"bizType\":\"article_attachment\",\"isTemp\":false}");
+        when(mapper.selectList(any())).thenReturn(List.of(eligible, bound, permanent));
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(mapper.deleteById(10L)).thenReturn(1);
+
+        service.deleteExpiredArticleTemps(new Date(1_786_291_200_000L));
+
+        InOrder deletionOrder = inOrder(ossClient, mapper);
+        deletionOrder.verify(ossClient).delete("https://bucket.example/uploads/10");
+        deletionOrder.verify(mapper).deleteById(10L);
+        verify(mapper, never()).deleteById(11L);
+        verify(mapper, never()).deleteById(12L);
+    }
+
+    @Test
+    void expiredCleanupKeepsDatabaseRowWhenObjectDeletionFails() {
+        SysOss eligible = storedOss(10L, "{\"bizType\":\"article_video\",\"isTemp\":true}");
+        when(mapper.selectList(any())).thenReturn(List.of(eligible));
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        doThrow(new IllegalStateException("object store unavailable")).when(ossClient)
+            .delete("https://bucket.example/uploads/10");
+
+        assertThatThrownBy(() -> service.deleteExpiredArticleTemps(new Date(1_786_291_200_000L)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("object store unavailable");
+
+        verify(mapper, never()).deleteById(10L);
+    }
+
+    @Test
     void directDeleteRejectsAnAttachmentAlreadyBoundToBusiness() {
         when(mapper.selectByIds(List.of(10L))).thenReturn(List.of(
             oss(10L, "{\"isTemp\":false,\"refType\":\"content_article\"}")));
@@ -304,6 +366,13 @@ class SysOssServiceImplTest {
         SysOss oss = new SysOss();
         oss.setOssId(ossId);
         oss.setExt1(ext1);
+        return oss;
+    }
+
+    private static SysOss storedOss(Long ossId, String ext1) {
+        SysOss oss = oss(ossId, ext1);
+        oss.setService("minio");
+        oss.setUrl("https://bucket.example/uploads/" + ossId);
         return oss;
     }
 

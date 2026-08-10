@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -60,6 +61,15 @@ public interface ISysOssService {
     SysOssVo upload(MultipartFile file);
 
     /**
+     * 上传带业务类型的 MultipartFile。
+     *
+     * @param file 文件
+     * @param bizType 业务类型
+     * @return 上传结果
+     */
+    SysOssVo upload(MultipartFile file, String bizType);
+
+    /**
      * 上传文件到对象存储服务，并保存文件信息到数据库
      *
      * @param file 要上传的文件对象
@@ -83,5 +93,12 @@ public interface ISysOssService {
      * @return 结果
      */
     Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid);
+
+    /**
+     * 删除截止时间之前仍未绑定的文章临时附件。
+     *
+     * @param cutoff 截止时间
+     */
+    void deleteExpiredArticleTemps(Date cutoff);
 
 }
