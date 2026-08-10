@@ -4,15 +4,21 @@ import com.fasterxml.jackson.annotation.JsonView;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
 import jakarta.servlet.http.HttpServletResponse;
+import org.dromara.common.idempotent.annotation.RepeatSubmit;
+import org.dromara.common.log.annotation.Log;
+import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.content.domain.bo.ContentArticleBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.bo.ContentArticleStatusBo;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.lang.reflect.Method;
 
@@ -90,6 +96,30 @@ class ContentArticleControllerContractTest {
     @Test
     void exposesFixedTagOptionsEndpoint() throws Exception {
         assertDictionaryEndpoint("tagOptions", "/tag-options");
+    }
+
+    @Test
+    void exposesValidatedPostStatusChangeEndpoint() throws Exception {
+        Method method = ContentArticleController.class.getDeclaredMethod(
+            "changeStatus", ContentArticleStatusBo.class);
+
+        PostMapping mapping = method.getAnnotation(PostMapping.class);
+        assertThat(mapping).isNotNull();
+        assertThat(mapping.value()).containsExactly("/changeStatus");
+
+        SaCheckPermission permission = method.getAnnotation(SaCheckPermission.class);
+        assertThat(permission).isNotNull();
+        assertThat(permission.value()).containsExactly("content:article:edit");
+
+        Log log = method.getAnnotation(Log.class);
+        assertThat(log).isNotNull();
+        assertThat(log.businessType()).isEqualTo(BusinessType.UPDATE);
+        assertThat(method.getAnnotation(RepeatSubmit.class)).isNotNull();
+
+        assertThat(method.getParameters()[0].getAnnotation(RequestBody.class)).isNotNull();
+        Validated validated = method.getParameters()[0].getAnnotation(Validated.class);
+        assertThat(validated).isNotNull();
+        assertThat(validated.value()).isEmpty();
     }
 
     private void assertDictionaryEndpoint(String methodName, String path) throws Exception {

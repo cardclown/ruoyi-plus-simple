@@ -19,6 +19,7 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.content.domain.bo.ContentArticleBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.bo.ContentArticleStatusBo;
 import org.dromara.content.domain.vo.ContentArticleDictOptionVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.service.IContentArticleService;
@@ -154,6 +155,20 @@ public class ContentArticleController extends BaseController {
     public R<Void> edit(@JsonView(ContentArticleBo.EditView.class)
                         @Validated(EditGroup.class) @RequestBody ContentArticleBo bo) {
         return toAjax(contentArticleService.updateByBo(bo));
+    }
+
+    /**
+     * 发布或撤回文章，请求仅接收文章 ID 和目标状态。
+     *
+     * @param bo 文章状态修改请求
+     * @return 状态修改结果
+     */
+    @SaCheckPermission("content:article:edit")
+    @Log(title = "文章", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PostMapping("/changeStatus")
+    public R<Void> changeStatus(@Validated @RequestBody ContentArticleStatusBo bo) {
+        return toAjax(contentArticleService.changeStatus(bo.getArticleId(), bo.getStatus()));
     }
 
     /**
