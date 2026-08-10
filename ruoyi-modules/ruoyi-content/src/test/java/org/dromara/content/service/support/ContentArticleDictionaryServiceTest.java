@@ -34,6 +34,7 @@ class ContentArticleDictionaryServiceTest {
 
         assertThat(options).singleElement().satisfies(option -> {
             assertThat(option.getDictCode()).isEqualTo(11L);
+            assertThat(option.getDictSort()).isEqualTo(2);
             assertThat(option.getDictLabel()).isEqualTo("公司新闻");
             assertThat(option.getDictValue()).isEqualTo("company_news");
             assertThat(option.getCssClass()).isEqualTo("article-category");

@@ -12,6 +12,7 @@
     <modules>
         <module>ruoyi-generator</module>
         <module>ruoyi-system</module>
+        <module>ruoyi-content</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
