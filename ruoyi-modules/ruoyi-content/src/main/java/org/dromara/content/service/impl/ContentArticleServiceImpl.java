@@ -67,7 +67,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     }
 
     /**
-     * 构造文章列表与导出查询条件，只选择响应所需字段，并仅应用标题、分类和发布状态三个允许的筛选项。
+     * 构造文章列表与导出查询条件，显式限定查询字段集合，并仅应用标题、分类和发布状态三个允许的筛选项。
      *
      * @param query 文章查询条件
      * @return 限定查询字段、筛选条件和排序规则的查询包装器
