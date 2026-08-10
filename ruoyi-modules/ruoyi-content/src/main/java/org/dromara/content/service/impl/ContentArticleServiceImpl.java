@@ -118,6 +118,9 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (persisted == null) {
             throw new ServiceException("文章不存在或无权操作");
         }
+        if ("1".equals(persisted.getStatus())) {
+            throw new ServiceException("已发布文章请先撤回为草稿后再修改");
+        }
 
         ContentArticle update = prepareArticle(bo);
         // 修改必须显式沿用请求中的 ID；prepareArticle 的新增映射边界故意不会复制 ID。

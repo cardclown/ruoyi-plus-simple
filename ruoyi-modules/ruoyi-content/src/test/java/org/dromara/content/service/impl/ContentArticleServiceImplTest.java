@@ -141,6 +141,55 @@ class ContentArticleServiceImplTest {
     }
 
     @Test
+    void updateRejectsPublishedArticleEvenWhenRequestWithdrawsIt() {
+        ContentArticle persisted = persistedArticle();
+        persisted.setStatus("1");
+        ContentArticleBo bo = articleBo();
+        bo.setArticleId(100L);
+        bo.setStatus("0");
+        when(articleMapper.selectArticleById(100L)).thenReturn(persisted);
+
+        assertThatThrownBy(() -> service.updateByBo(bo))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("已发布文章请先撤回为草稿后再修改");
+
+        verify(articleMapper, never()).updateArticleById(any(ContentArticle.class));
+        verify(tagMapper, never()).deleteByArticleId(any());
+    }
+
+    @Test
+    void updateRejectsPublishedArticleThatRemainsPublished() {
+        ContentArticle persisted = persistedArticle();
+        persisted.setStatus("1");
+        ContentArticleBo bo = articleBo();
+        bo.setArticleId(100L);
+        bo.setStatus("1");
+        when(articleMapper.selectArticleById(100L)).thenReturn(persisted);
+
+        assertThatThrownBy(() -> service.updateByBo(bo))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("已发布文章请先撤回为草稿后再修改");
+    }
+
+    @Test
+    void updateAllowsDraftToBeSavedAndPublished() {
+        ContentArticleBo bo = articleBo();
+        bo.setArticleId(100L);
+        bo.setStatus("1");
+        when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
+        when(dictionaryService.validateAndNormalize(11L, null)).thenReturn(List.of());
+        when(articleMapper.updateArticleById(any(ContentArticle.class))).thenReturn(1);
+
+        assertThat(service.updateByBo(bo)).isTrue();
+
+        ArgumentCaptor<ContentArticle> captor = ArgumentCaptor.forClass(ContentArticle.class);
+        verify(articleMapper).updateArticleById(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo("1");
+        assertThat(captor.getValue().getPublishBy()).isEqualTo(9L);
+        assertThat(captor.getValue().getPublishTime()).isEqualTo(new Date(1_000L));
+    }
+
+    @Test
     void draftToDraftIsSuccessfulWithoutWriting() {
         when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
 
