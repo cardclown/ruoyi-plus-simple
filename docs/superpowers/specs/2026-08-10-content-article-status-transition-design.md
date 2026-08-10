@@ -12,7 +12,7 @@
 - 所有状态操作都受租户边界和文章数据权限约束。
 - 状态接口只更新状态、发布审计字段和更新审计字段，不修改文章内容或标签。
 - 已发布文章必须先撤回为草稿，才能继续普通编辑或再次发布。
-- 复用现有文章请求对象，不新增额外 BO 类。
+- 使用独立的状态请求对象，使接口契约与普通文章编辑彻底分离。
 
 ## 非目标
 
@@ -23,15 +23,15 @@
 
 ## 方案选择
 
-### 采用方案：复用 `ContentArticleBo` 的独立视图与校验分组
+### 采用方案：新增 `ContentArticleStatusBo`
 
-在 `ContentArticleBo` 内增加状态操作专用的 `StatusView` 和 `StatusGroup`。控制器通过 JSON View 只绑定 `articleId` 和 `status`，并通过独立校验分组仅校验这两个字段。
+新增一个只包含 `articleId` 和 `status` 的 `ContentArticleStatusBo`。两个字段在该 BO 内直接声明必填和状态格式校验，控制器不需要额外的 JSON View 或校验分组。
 
-该方案与当前新增/修改共用 BO 的结构一致，也避免为两个字段增加新 BO。
+该方案使状态修改契约可以独立阅读、验证和演进，也避免在通用 `ContentArticleBo` 内继续叠加视图与校验分组。`ContentArticleStatusBo` 不继承 `BaseEntity`，不暴露审计字段或 `params`。
 
 ### 未采用方案
 
-- 新增 `ContentArticleStatusBo`：契约独立，但会增加用户已明确不希望出现的 BO 数量。
+- 复用 `ContentArticleBo` 并新增 `StatusView/StatusGroup`：可以少一个类，但会把状态契约继续叠加到普通编辑 BO 中，降低可读性。
 - 使用 URL 查询参数：实现简单，但与项目内其他状态修改接口的 JSON 请求风格不一致。
 
 ## HTTP 接口契约
@@ -128,11 +128,12 @@ Content-Type: application/json
 - 路径为 `POST /content/article/changeStatus`。
 - 权限为 `content:article:edit`。
 - 具备更新日志和重复提交防护。
-- 使用 `StatusView` 和 `StatusGroup`。
+- 使用 `ContentArticleStatusBo` 作为唯一请求体。
 
 ### 请求对象
 
-- 状态视图只绑定 `articleId` 和 `status`。
+- `ContentArticleStatusBo` 只声明 `articleId` 和 `status`，不继承通用实体基类。
+- 请求中即使出现其他文章字段，也不会进入状态业务对象。
 - ID 缺失、状态缺失、状态非 `0/1` 均校验失败。
 
 ### 服务层
@@ -154,11 +155,11 @@ Content-Type: application/json
 
 ## 预计修改范围
 
-- `ContentArticleBo`：状态视图与校验分组。
+- `ContentArticleStatusBo`：新增只包含文章 ID 和目标状态的专用请求对象。
 - `ContentArticleController`：新增 `POST /changeStatus`。
 - `IContentArticleService` 及 `ContentArticleServiceImpl`：状态修改流程与已发布文章的普通编辑限制。
 - `ContentArticleMapper`：受数据权限约束的局部状态更新。
-- 现有控制器、请求模型、Service 和 Mapper 契约测试：先失败，再用最小代码使其通过。
+- 新增状态 BO 校验测试，并修改现有控制器、Service 和 Mapper 契约测试：先失败，再用最小代码使其通过。
 
 ## 验收标准
 
