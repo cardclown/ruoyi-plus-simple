@@ -37,6 +37,13 @@ public interface ISysOssService {
     List<SysOssVo> listByIds(Collection<Long> ossIds);
 
     /**
+     * 强制删除 OSS 对象存储及其元数据。
+     *
+     * @param ossIds OSS 对象 ID 集合
+     */
+    void deleteByIds(Collection<Long> ossIds);
+
+    /**
      * 根据 ossId 从缓存或数据库中获取 SysOssVo 对象
      *
      * @param ossId 文件在数据库中的唯一标识

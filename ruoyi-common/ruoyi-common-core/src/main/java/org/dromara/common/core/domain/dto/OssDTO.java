@@ -43,4 +43,34 @@ public class OssDTO implements Serializable {
      */
     private String url;
 
+    /**
+     * 文件大小（字节）
+     */
+    private Long fileSize;
+
+    /**
+     * MIME 类型
+     */
+    private String contentType;
+
+    /**
+     * 所属业务类型
+     */
+    private String bizType;
+
+    /**
+     * 业务引用 ID
+     */
+    private String refId;
+
+    /**
+     * 业务引用类型
+     */
+    private String refType;
+
+    /**
+     * 是否为临时文件
+     */
+    private Boolean isTemp;
+
 }
