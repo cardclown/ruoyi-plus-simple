@@ -54,6 +54,12 @@ public class ContentArticleVo implements Serializable {
     @ExcelProperty(value = "封面OSS附件ID")
     private Long coverOssId;
 
+    /** 文章图片 OSS 附件 ID 集合，按展示顺序排列。 */
+    private List<Long> attachmentOssIds;
+
+    /** 文章视频 OSS 附件 ID 集合，按展示顺序排列。 */
+    private List<Long> videoOssIds;
+
     /** 发布状态，供前端展示并按字典转换后导出为 Excel 列。 */
     @ExcelProperty(value = "发布状态", converter = ExcelDictConvert.class)
     @ExcelDictFormat(readConverterExp = "0=草稿,1=已发布")
