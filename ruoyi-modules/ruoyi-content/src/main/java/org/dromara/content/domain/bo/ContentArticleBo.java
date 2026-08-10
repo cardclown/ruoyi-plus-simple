@@ -14,11 +14,11 @@ import org.dromara.content.domain.ContentArticle;
 
 import java.util.List;
 
-@Data
-@AutoMapper(target = ContentArticle.class, reverseConvertGenerate = false)
 /**
  * 文章新增和修改共用的请求对象。
  */
+@Data
+@AutoMapper(target = ContentArticle.class, reverseConvertGenerate = false)
 public class ContentArticleBo {
 
     /** 新增请求可见字段视图，不包含由后台生成的文章 ID。 */
