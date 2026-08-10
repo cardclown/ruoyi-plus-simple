@@ -27,6 +27,9 @@ import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -139,15 +142,17 @@ class SysOssServiceImplTest {
 
     @Test
     void uploadPersistsNewAttachmentAsTemporary() {
-        MockMultipartFile file = new MockMultipartFile("file", "cover.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()
             .filename("uploads/cover.png")
             .url("https://bucket.example/uploads/cover.png")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(byte[].class), eq(".png"), eq("image/png"))).thenReturn(uploadResult);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
         when(ossClient.getConfigKey()).thenReturn("minio");
         when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(mapper.insert(any(SysOss.class))).thenReturn(1);
 
         SysOssVo result = service.upload(file);
 
@@ -159,6 +164,26 @@ class SysOssServiceImplTest {
         assertThat(result)
             .extracting(SysOssVo::getFileName, SysOssVo::getOriginalName, SysOssVo::getUrl)
             .containsExactly("uploads/cover.png", "cover.png", "https://bucket.example/uploads/cover.png");
+    }
+
+    @Test
+    void uploadDeletesObjectWhenAttachmentRecordCannotBeSaved() {
+        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
+        when(ossClient.getConfigKey()).thenReturn("minio");
+        when(mapper.insert(any(SysOss.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.upload(file))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文件信息保存失败");
+
+        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
     }
 
     @Test
@@ -200,5 +225,19 @@ class SysOssServiceImplTest {
         oss.setOssId(ossId);
         oss.setExt1(ext1);
         return oss;
+    }
+
+    private static MockMultipartFile multipartFileRejectingGetBytes(String filename, String contentType, byte[] content) {
+        return new MockMultipartFile("file", filename, contentType, content) {
+            @Override
+            public byte[] getBytes() {
+                throw new AssertionError("MultipartFile.getBytes() must not be used for uploads");
+            }
+
+            @Override
+            public InputStream getInputStream() throws IOException {
+                return new ByteArrayInputStream(content);
+            }
+        };
     }
 }

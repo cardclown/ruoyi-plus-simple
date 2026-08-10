@@ -1,6 +1,5 @@
 package org.dromara.common.oss.core;
 
-import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.util.IdUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.constant.Constants;
@@ -92,6 +91,10 @@ public class OssClient {
 
             // 创建AWS基于 Netty 的 S3 客户端
             this.client = S3AsyncClient.builder()
+                .multipartEnabled(true)
+                .multipartConfiguration(builder -> builder
+                    .thresholdInBytes(32L * 1024 * 1024)
+                    .minimumPartSizeInBytes(32L * 1024 * 1024))
                 .credentialsProvider(credentialsProvider)
                 .endpointOverride(URI.create(getEndpoint()))
                 .region(of())
@@ -183,21 +186,20 @@ public class OssClient {
      * @throws OssException 如果上传失败，抛出自定义异常
      */
     public UploadResult upload(InputStream inputStream, String key, Long length, String contentType) {
-        // 如果输入流不是 ByteArrayInputStream，则将其读取为字节数组再创建 ByteArrayInputStream
-        if (!(inputStream instanceof ByteArrayInputStream)) {
-            inputStream = new ByteArrayInputStream(IoUtil.readBytes(inputStream));
-        }
+        Upload upload = null;
+        BlockingInputStreamAsyncRequestBody body = null;
         try {
             // 创建异步请求体（length如果为空会报错）
-            BlockingInputStreamAsyncRequestBody body = BlockingInputStreamAsyncRequestBody.builder()
+            body = BlockingInputStreamAsyncRequestBody.builder()
                 .contentLength(length)
                 .subscribeTimeout(Duration.ofSeconds(120))
                 .build();
 
             // 使用 transferManager 进行上传
-            Upload upload = transferManager.upload(
+            BlockingInputStreamAsyncRequestBody requestBody = body;
+            upload = transferManager.upload(
                 x -> {
-                    x.requestBody(body).putObjectRequest(
+                    x.requestBody(requestBody).putObjectRequest(
                         y -> y.bucket(properties.getBucketName())
                             .key(key)
                             .contentType(contentType)
@@ -222,6 +224,12 @@ public class OssClient {
             // 提取上传结果中的 ETag，并构建一个自定义的 UploadResult 对象
             return UploadResult.builder().url(getUrl() + StringUtils.SLASH + key).filename(key).eTag(eTag).build();
         } catch (Exception e) {
+            if (upload != null) {
+                upload.completionFuture().cancel(true);
+            }
+            if (body != null) {
+                body.cancel();
+            }
             throw new OssException("上传文件失败，请检查配置信息:[" + e.getMessage() + "]");
         }
     }

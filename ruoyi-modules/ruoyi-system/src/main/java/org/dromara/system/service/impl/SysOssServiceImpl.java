@@ -40,6 +40,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -252,17 +253,20 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
         OssClient storage = ossClientProvider.current();
         UploadResult uploadResult;
-        try {
-            uploadResult = storage.uploadSuffix(file.getBytes(), suffix, file.getContentType());
+        try (InputStream inputStream = file.getInputStream()) {
+            uploadResult = storage.uploadSuffix(inputStream, suffix, file.getSize(), file.getContentType());
         } catch (IOException e) {
-            throw new ServiceException(e.getMessage());
+            ServiceException exception = new ServiceException("读取上传文件失败");
+            exception.initCause(e);
+            throw exception;
         }
         SysOssExt ext1 = new SysOssExt();
         ext1.setFileSize(file.getSize());
         ext1.setContentType(file.getContentType());
         ext1.setIsTemp(true);
         // 保存文件信息
-        return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
+        return buildResultEntityWithCompensation(
+            originalfileName, suffix, storage, uploadResult, ext1);
     }
 
     /**
@@ -285,7 +289,23 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ext1.setFileSize(length);
         ext1.setIsTemp(true);
         // 保存文件信息
-        return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
+        return buildResultEntityWithCompensation(
+            originalfileName, suffix, storage, uploadResult, ext1);
+    }
+
+    private SysOssVo buildResultEntityWithCompensation(String originalfileName, String suffix, OssClient storage,
+                                                         UploadResult uploadResult, SysOssExt ext1) {
+        try {
+            return buildResultEntity(
+                originalfileName, suffix, storage.getConfigKey(), uploadResult, ext1);
+        } catch (RuntimeException exception) {
+            try {
+                storage.delete(uploadResult.getUrl());
+            } catch (RuntimeException deleteException) {
+                exception.addSuppressed(deleteException);
+            }
+            throw exception;
+        }
     }
 
     @NotNull
@@ -297,7 +317,9 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         oss.setOriginalName(originalfileName);
         oss.setService(configKey);
         oss.setExt1(JsonUtils.toJsonString(ext1));
-        baseMapper.insert(oss);
+        if (baseMapper.insert(oss) != 1) {
+            throw new ServiceException("文件信息保存失败");
+        }
         SysOssVo sysOssVo = MapstructUtils.convert(oss, SysOssVo.class);
         return this.matchingUrl(sysOssVo);
     }
