@@ -59,6 +59,15 @@ public interface IContentArticleService {
     Boolean updateByBo(ContentArticleBo bo);
 
     /**
+     * 修改文章发布状态。
+     *
+     * @param articleId 文章 ID
+     * @param status 目标状态：0 草稿，1 已发布
+     * @return 状态修改结果
+     */
+    Boolean changeStatus(Long articleId, String status);
+
+    /**
      * 逻辑删除文章并保留数据。
      *
      * @param ids 待删除的文章 ID 集合

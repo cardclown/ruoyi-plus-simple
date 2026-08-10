@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @Tag("dev")
@@ -140,6 +141,95 @@ class ContentArticleServiceImplTest {
     }
 
     @Test
+    void draftToDraftIsSuccessfulWithoutWriting() {
+        when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
+
+        assertThat(service.changeStatus(100L, "0")).isTrue();
+
+        verify(articleMapper, never()).updateArticleStatus(any(ContentArticle.class));
+        verifyNoInteractions(tagMapper);
+    }
+
+    @Test
+    void draftToPublishedWritesCurrentPublisherAndTime() {
+        when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
+        when(articleMapper.updateArticleStatus(any(ContentArticle.class))).thenReturn(1);
+
+        assertThat(service.changeStatus(100L, "1")).isTrue();
+
+        ArgumentCaptor<ContentArticle> captor = ArgumentCaptor.forClass(ContentArticle.class);
+        verify(articleMapper).updateArticleStatus(captor.capture());
+        assertThat(captor.getValue().getArticleId()).isEqualTo(100L);
+        assertThat(captor.getValue().getStatus()).isEqualTo("1");
+        assertThat(captor.getValue().getPublishBy()).isEqualTo(9L);
+        assertThat(captor.getValue().getPublishTime()).isEqualTo(new Date(1_000L));
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo(9L);
+        assertThat(captor.getValue().getUpdateTime()).isEqualTo(new Date(1_000L));
+        verifyNoInteractions(tagMapper);
+    }
+
+    @Test
+    void publishedToDraftClearsPublisherAndTime() {
+        ContentArticle persisted = persistedArticle();
+        persisted.setStatus("1");
+        persisted.setPublishBy(8L);
+        persisted.setPublishTime(new Date(500L));
+        when(articleMapper.selectArticleById(100L)).thenReturn(persisted);
+        when(articleMapper.updateArticleStatus(any(ContentArticle.class))).thenReturn(1);
+
+        assertThat(service.changeStatus(100L, "0")).isTrue();
+
+        ArgumentCaptor<ContentArticle> captor = ArgumentCaptor.forClass(ContentArticle.class);
+        verify(articleMapper).updateArticleStatus(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo("0");
+        assertThat(captor.getValue().getPublishBy()).isNull();
+        assertThat(captor.getValue().getPublishTime()).isNull();
+        verifyNoInteractions(tagMapper);
+    }
+
+    @Test
+    void publishedToPublishedRequiresWithdrawalFirst() {
+        ContentArticle persisted = persistedArticle();
+        persisted.setStatus("1");
+        when(articleMapper.selectArticleById(100L)).thenReturn(persisted);
+
+        assertThatThrownBy(() -> service.changeStatus(100L, "1"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文章已发布，请先撤回后再发布");
+
+        verify(articleMapper, never()).updateArticleStatus(any(ContentArticle.class));
+        verifyNoInteractions(tagMapper);
+    }
+
+    @Test
+    void changeStatusRejectsUnknownStatusBeforeReadingArticle() {
+        assertThatThrownBy(() -> service.changeStatus(100L, "2"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("发布状态只能为0或1");
+
+        verify(articleMapper, never()).selectArticleById(any());
+    }
+
+    @Test
+    void changeStatusRejectsMissingOrUnauthorizedArticle() {
+        when(articleMapper.selectArticleById(100L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.changeStatus(100L, "1"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文章不存在或无权操作");
+    }
+
+    @Test
+    void changeStatusFailsWhenAffectedRowsDoNotMatch() {
+        when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
+        when(articleMapper.updateArticleStatus(any(ContentArticle.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.changeStatus(100L, "1"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文章状态修改失败");
+    }
+
+    @Test
     void logicalDeleteKeepsTagRelations() {
         when(articleMapper.selectExistingArticleIds(List.of(100L))).thenReturn(List.of(100L));
         when(articleMapper.logicalDeleteByIds(List.of(100L))).thenReturn(1);
@@ -195,6 +285,7 @@ class ContentArticleServiceImplTest {
     void allWriteMethodsDeclareRollbackForException() throws Exception {
         assertTransactional("insertByBo", ContentArticleBo.class);
         assertTransactional("updateByBo", ContentArticleBo.class);
+        assertTransactional("changeStatus", Long.class, String.class);
         assertTransactional("deleteWithValidByIds", Collection.class, Boolean.class);
         assertTransactional("physicalDeleteByIds", Collection.class);
     }

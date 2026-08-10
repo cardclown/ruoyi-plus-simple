@@ -131,6 +131,35 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return true;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean changeStatus(Long articleId, String status) {
+        validateStatus(status);
+        ContentArticle persisted = articleMapper.selectArticleById(articleId);
+        if (persisted == null) {
+            throw new ServiceException("文章不存在或无权操作");
+        }
+        if ("1".equals(persisted.getStatus()) && "1".equals(status)) {
+            throw new ServiceException("文章已发布，请先撤回后再发布");
+        }
+        if ("0".equals(persisted.getStatus()) && "0".equals(status)) {
+            return true;
+        }
+
+        Long currentUserId = operationContext.currentUserId();
+        Date now = operationContext.now();
+        ContentArticle update = new ContentArticle();
+        update.setArticleId(articleId);
+        update.setStatus(status);
+        publishPolicy.applyForUpdate(update, persisted, currentUserId, now);
+        update.setUpdateBy(currentUserId);
+        update.setUpdateTime(now);
+        if (articleMapper.updateArticleStatus(update) != 1) {
+            throw new ServiceException("文章状态修改失败");
+        }
+        return true;
+    }
+
     /**
      * 统一准备待持久化文章，依次完成状态、租户字典、租户 OSS 和富文本安全校验。
      *
