@@ -66,6 +66,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return articleMapper.selectArticleList(buildQueryWrapper(query));
     }
 
+    /**
+     * 构造文章列表与导出查询条件，只选择响应所需字段，并仅应用标题、分类和发布状态三个允许的筛选项。
+     *
+     * @param query 文章查询条件
+     * @return 限定查询字段、筛选条件和排序规则的查询包装器
+     */
     private LambdaQueryWrapper<ContentArticle> buildQueryWrapper(ContentArticleQuery query) {
         LambdaQueryWrapper<ContentArticle> wrapper = Wrappers.lambdaQuery();
         wrapper.select(
@@ -96,6 +102,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     public Boolean insertByBo(ContentArticleBo bo) {
         ContentArticle article = prepareArticle(bo);
         publishPolicy.applyForCreate(article, operationContext.currentUserId(), operationContext.now());
+        // 新增时不预设 articleId，由 Mapper 插入采用的雪花 ID 策略生成并回填实体。
         if (articleMapper.insert(article) != 1) {
             throw new ServiceException("文章新增失败");
         }
@@ -113,6 +120,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         }
 
         ContentArticle update = prepareArticle(bo);
+        // 修改必须显式沿用请求中的 ID；prepareArticle 的新增映射边界故意不会复制 ID。
         update.setArticleId(bo.getArticleId());
         publishPolicy.applyForUpdate(update, persisted, operationContext.currentUserId(), operationContext.now());
         if (articleMapper.updateArticleById(update) != 1) {
@@ -123,6 +131,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return true;
     }
 
+    /**
+     * 统一准备待持久化文章，依次完成状态、租户字典、租户 OSS 和富文本安全校验。
+     *
+     * @param bo 客户端提交的文章业务对象
+     * @return 已规范化标签并完成富文本过滤的文章实体
+     */
     private ContentArticle prepareArticle(ContentArticleBo bo) {
         validateStatus(bo.getStatus());
         List<Long> tagIds = dictionaryService.validateAndNormalize(bo.getCategoryDictCode(), bo.getTagIds());
@@ -134,6 +148,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return article;
     }
 
+    /**
+     * 将业务对象映射为文章实体，只复制客户端允许控制的业务字段，故意排除 ID 和审计字段。
+     *
+     * @param bo 客户端提交的文章业务对象
+     * @return 仅包含客户端可控业务字段的文章实体
+     */
     private ContentArticle toEntity(ContentArticleBo bo) {
         ContentArticle article = new ContentArticle();
         article.setTitle(bo.getTitle());
@@ -146,6 +166,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return article;
     }
 
+    /**
+     * 将详情查询得到的文章实体转换为响应对象。
+     *
+     * @param article 文章实体
+     * @return 文章详情响应对象
+     */
     private ContentArticleVo toVo(ContentArticle article) {
         ContentArticleVo vo = new ContentArticleVo();
         vo.setArticleId(article.getArticleId());
@@ -163,12 +189,22 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         return vo;
     }
 
+    /**
+     * 在服务层防御性校验发布状态，避免绕过入参校验后写入非法状态。
+     *
+     * @param status 发布状态，只允许草稿 {@code 0} 或已发布 {@code 1}
+     */
     private void validateStatus(String status) {
         if (!"0".equals(status) && !"1".equals(status)) {
             throw new ServiceException("发布状态只能为0或1");
         }
     }
 
+    /**
+     * 校验封面文件存在且可由当前租户访问；未设置封面时不校验。
+     *
+     * @param coverOssId 封面 OSS 文件 ID，可为空
+     */
     private void validateCoverOss(Long coverOssId) {
         if (coverOssId == null) {
             return;
@@ -180,6 +216,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         }
     }
 
+    /**
+     * 批量创建文章与标签的关联，并由后台统一写入当前操作人和操作时间。
+     *
+     * @param articleId 文章 ID
+     * @param tagIds 已校验并规范化的标签字典编码
+     */
     private void insertTags(Long articleId, List<Long> tagIds) {
         if (tagIds == null || tagIds.isEmpty()) {
             return;
@@ -205,6 +247,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         List<Long> articleIds = normalizeIds(ids);
         List<Long> existingIds = articleMapper.selectExistingArticleIds(articleIds);
+        // 删除前核对所有 ID 均可操作，防止只删除其中一部分而造成部分成功。
         if (existingIds.size() != articleIds.size()) {
             throw new ServiceException("部分文章不存在或无权操作");
         }
@@ -220,9 +263,11 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     public void physicalDeleteByIds(Collection<Long> ids) {
         List<Long> articleIds = normalizeIds(ids);
         List<Long> deletedIds = articleMapper.selectDeletedArticleIds(articleIds);
+        // 物理删除前核对所有 ID 均已逻辑删除且可操作，防止部分成功。
         if (deletedIds.size() != articleIds.size()) {
             throw new ServiceException("只能物理删除已逻辑删除且有权操作的文章");
         }
+        // 先清理标签关联，再删除文章本体，避免遗留无主关系记录。
         tagMapper.deleteByArticleIds(articleIds);
         int deleted = articleMapper.physicalDeleteByIds(articleIds);
         if (deleted != articleIds.size()) {
@@ -230,6 +275,12 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         }
     }
 
+    /**
+     * 规范化批量操作 ID：拒绝空集合和空 ID，去重并保持调用方的原始输入顺序。
+     *
+     * @param ids 待操作的文章 ID 集合
+     * @return 去重且保持原输入顺序的文章 ID 列表
+     */
     private List<Long> normalizeIds(Collection<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             throw new ServiceException("文章ID不能为空");
