@@ -62,7 +62,7 @@ public interface IContentArticleService {
      * 逻辑删除文章并保留数据。
      *
      * @param ids 待删除的文章 ID 集合
-     * @param isValid 是否校验文章 ID 集合的数据权限和存在性
+     * @param isValid 为兼容框架通用删除接口保留；当前文章实现始终校验文章 ID 集合的数据权限和存在性
      * @return 删除结果
      */
     Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid);
