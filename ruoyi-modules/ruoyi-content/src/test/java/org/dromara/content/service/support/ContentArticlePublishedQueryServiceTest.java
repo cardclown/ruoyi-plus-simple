@@ -10,6 +10,9 @@ import org.dromara.content.domain.vo.ContentArticlePublicVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Date;
 import java.util.List;
@@ -79,6 +82,55 @@ class ContentArticlePublishedQueryServiceTest {
     }
 
     @Test
+    void pageUsesPublicDefaultsWhenPageQueryIsNull() {
+        Page<?> mapperPage = captureMapperPage(null);
+
+        assertThat(mapperPage.getCurrent()).isEqualTo(1);
+        assertThat(mapperPage.getSize()).isEqualTo(10);
+    }
+
+    @Test
+    void pageUsesPublicDefaultsWhenPaginationValuesAreNull() {
+        Page<?> mapperPage = captureMapperPage(new PageQuery(null, null));
+
+        assertThat(mapperPage.getCurrent()).isEqualTo(1);
+        assertThat(mapperPage.getSize()).isEqualTo(10);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "0, -7",
+        "-4, 0"
+    })
+    void pageNormalizesNonPositivePaginationValues(int pageNum, int pageSize) {
+        Page<?> mapperPage = captureMapperPage(new PageQuery(pageSize, pageNum));
+
+        assertThat(mapperPage.getCurrent()).isEqualTo(1);
+        assertThat(mapperPage.getSize()).isEqualTo(10);
+    }
+
+    @Test
+    void pageCapsOversizedPageSize() {
+        Page<?> mapperPage = captureMapperPage(new PageQuery(1_000, 3));
+
+        assertThat(mapperPage.getCurrent()).isEqualTo(3);
+        assertThat(mapperPage.getSize()).isEqualTo(100);
+    }
+
+    @Test
+    void pageIgnoresCallerProvidedSorting() {
+        PageQuery pageQuery = new PageQuery(20, 2);
+        pageQuery.setOrderByColumn("title");
+        pageQuery.setIsAsc("asc");
+
+        Page<?> mapperPage = captureMapperPage(pageQuery);
+
+        assertThat(mapperPage.getCurrent()).isEqualTo(2);
+        assertThat(mapperPage.getSize()).isEqualTo(20);
+        assertThat(mapperPage.orders()).isEmpty();
+    }
+
+    @Test
     void detailReturnsOnlyPublicFieldsFromMapperResult() {
         when(mapper.selectPublishedArticleById("140872", 100L))
             .thenReturn(article(100L, "正文"));
@@ -106,6 +158,19 @@ class ContentArticlePublishedQueryServiceTest {
             .hasMessage("租户ID不能为空");
 
         verifyNoInteractions(mapper);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Page<?> captureMapperPage(PageQuery pageQuery) {
+        when(mapper.selectPublishedArticlePage(any(), eq("140872"), eq(null), eq(null)))
+            .thenReturn(new Page<>());
+
+        service.queryPage("140872", null, pageQuery);
+
+        ArgumentCaptor<Page> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(mapper).selectPublishedArticlePage(
+            pageCaptor.capture(), eq("140872"), eq(null), eq(null));
+        return pageCaptor.getValue();
     }
 
     private static ContentArticle article(Long articleId, String content) {

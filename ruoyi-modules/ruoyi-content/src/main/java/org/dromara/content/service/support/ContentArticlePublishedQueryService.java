@@ -16,6 +16,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class ContentArticlePublishedQueryService {
 
+    private static final int PUBLIC_DEFAULT_PAGE_NUM = 1;
+    private static final int PUBLIC_DEFAULT_PAGE_SIZE = 10;
+    private static final int PUBLIC_MAX_PAGE_SIZE = 100;
+
     private final ContentArticleMapper articleMapper;
     private final ContentArticleTenantScope tenantScope;
 
@@ -25,7 +29,8 @@ public class ContentArticlePublishedQueryService {
         ContentArticleQuery safeQuery = query == null ? new ContentArticleQuery() : query;
         return tenantScope.execute(tenantId, () -> {
             Page<ContentArticle> page = articleMapper.selectPublishedArticlePage(
-                pageQuery.build(), tenantId, safeQuery.getTitle(), safeQuery.getCategoryDictCode());
+                buildPublicPage(pageQuery), tenantId,
+                safeQuery.getTitle(), safeQuery.getCategoryDictCode());
             return TableDataInfo.build(page.convert(this::toPublicVo));
         });
     }
@@ -39,6 +44,19 @@ public class ContentArticlePublishedQueryService {
             }
             return toPublicVo(article);
         });
+    }
+
+    /**
+     * 公开接口使用独立分页边界，避免全量或负数分页，并隔离调用方排序参数。
+     */
+    private Page<ContentArticle> buildPublicPage(PageQuery pageQuery) {
+        Integer requestedPageNum = pageQuery == null ? null : pageQuery.getPageNum();
+        Integer requestedPageSize = pageQuery == null ? null : pageQuery.getPageSize();
+        int pageNum = requestedPageNum == null || requestedPageNum <= 0
+            ? PUBLIC_DEFAULT_PAGE_NUM : requestedPageNum;
+        int pageSize = requestedPageSize == null || requestedPageSize <= 0
+            ? PUBLIC_DEFAULT_PAGE_SIZE : Math.min(requestedPageSize, PUBLIC_MAX_PAGE_SIZE);
+        return new Page<>(pageNum, pageSize);
     }
 
     private void validateTenantId(String tenantId) {
