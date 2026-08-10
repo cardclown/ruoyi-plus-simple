@@ -20,6 +20,17 @@ do $$
 declare
     duplicated_oss_id bigint;
 begin
+    if not exists
+    (
+        select 1
+          from information_schema.columns
+         where table_schema = current_schema()
+           and table_name = 'content_article'
+           and column_name = 'cover_oss_id'
+    ) then
+        return;
+    end if;
+
     select cover_oss_id
       into duplicated_oss_id
       from content_article
@@ -31,41 +42,37 @@ begin
     if duplicated_oss_id is not null then
         raise exception '历史封面OSS ID被多篇文章复用: %', duplicated_oss_id;
     end if;
-end
-$$;
 
-with source_rows as
-(
-    select article_id, cover_oss_id, create_by, create_time,
-           row_number() over (order by article_id) as row_no
-      from content_article
-     where cover_oss_id is not null
-       and not exists
-       (
-           select 1
-             from content_article_attachment current_relation
-            where current_relation.oss_id = content_article.cover_oss_id
-       )
-),
-base as
-(
-    select coalesce(max(article_attachment_id), 0) as max_id
-      from content_article_attachment
-)
-insert into content_article_attachment
-    (article_attachment_id, article_id, oss_id, attachment_type, sort_num, create_by, create_time)
-select base.max_id + source_rows.row_no,
-       source_rows.article_id,
-       source_rows.cover_oss_id,
-       '0',
-       0,
-       source_rows.create_by,
-       source_rows.create_time
-  from source_rows
- cross join base;
+    with source_rows as
+    (
+        select article_id, cover_oss_id, create_by, create_time,
+               row_number() over (order by article_id) as row_no
+          from content_article
+         where cover_oss_id is not null
+           and not exists
+           (
+               select 1
+                 from content_article_attachment current_relation
+                where current_relation.oss_id = content_article.cover_oss_id
+           )
+    ),
+    base as
+    (
+        select coalesce(max(article_attachment_id), 0) as max_id
+          from content_article_attachment
+    )
+    insert into content_article_attachment
+        (article_attachment_id, article_id, oss_id, attachment_type, sort_num, create_by, create_time)
+    select base.max_id + source_rows.row_no,
+           source_rows.article_id,
+           source_rows.cover_oss_id,
+           '0',
+           0,
+           source_rows.create_by,
+           source_rows.create_time
+      from source_rows
+     cross join base;
 
-do $$
-begin
     if exists
     (
         select 1
@@ -82,7 +89,7 @@ begin
     ) then
         raise exception '历史封面迁移数量校验失败';
     end if;
+
+    alter table content_article drop column if exists cover_oss_id;
 end
 $$;
-
-alter table content_article drop column if exists cover_oss_id;
