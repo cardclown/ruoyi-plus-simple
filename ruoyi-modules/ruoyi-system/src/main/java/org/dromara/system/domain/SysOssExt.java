@@ -33,6 +33,11 @@ public class SysOssExt implements Serializable {
     private String contentType;
 
     /**
+     * 技术文件分类（IMAGE 或 VIDEO）。
+     */
+    private String fileType;
+
+    /**
      * 来源标识（如 userUpload、systemImport）
      */
     private String source;

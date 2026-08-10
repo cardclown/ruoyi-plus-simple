@@ -4,6 +4,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.system.domain.bo.SysOssBo;
 import org.dromara.system.domain.vo.SysOssVo;
+import org.dromara.system.domain.enums.OssFileType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -61,13 +62,13 @@ public interface ISysOssService {
     SysOssVo upload(MultipartFile file);
 
     /**
-     * 上传带业务类型的 MultipartFile。
+     * 上传带技术文件分类的 MultipartFile。
      *
      * @param file 文件
-     * @param bizType 业务类型
+     * @param fileType 技术文件分类，可为空
      * @return 上传结果
      */
-    SysOssVo upload(MultipartFile file, String bizType);
+    SysOssVo upload(MultipartFile file, OssFileType fileType);
 
     /**
      * 上传文件到对象存储服务，并保存文件信息到数据库
@@ -95,10 +96,10 @@ public interface ISysOssService {
     Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid);
 
     /**
-     * 删除截止时间之前仍未绑定的文章临时附件。
+     * 删除截止时间之前仍未绑定的分类临时附件。
      *
      * @param cutoff 截止时间
      */
-    void deleteExpiredArticleTemps(Date cutoff);
+    void deleteExpiredTemps(Date cutoff);
 
 }

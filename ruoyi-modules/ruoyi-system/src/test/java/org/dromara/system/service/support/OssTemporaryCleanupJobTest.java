@@ -29,7 +29,7 @@ class OssTemporaryCleanupJobTest {
         job.clean();
 
         verify(cleaner).clean(eq(Path.of("C:/server/temp")), any(Instant.class));
-        verify(ossService).deleteExpiredArticleTemps(any(Date.class));
+        verify(ossService).deleteExpiredTemps(any(Date.class));
     }
 
     @Test
@@ -42,6 +42,6 @@ class OssTemporaryCleanupJobTest {
         job.clean();
 
         verify(cleaner, never()).clean(any(Path.class), any(Instant.class));
-        verify(ossService).deleteExpiredArticleTemps(any(Date.class));
+        verify(ossService).deleteExpiredTemps(any(Date.class));
     }
 }

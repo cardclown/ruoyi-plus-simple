@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.Date;
 
 /**
- * Periodic cleanup for request-local multipart files and unbound article objects.
+ * Periodic cleanup for request-local multipart files and unbound classified objects.
  */
 @Slf4j
 @Component
@@ -36,6 +36,6 @@ public class OssTemporaryCleanupJob {
                 log.warn("Unable to clean multipart temporary directory: {}", location, exception);
             }
         }
-        ossService.deleteExpiredArticleTemps(Date.from(cutoff));
+        ossService.deleteExpiredTemps(Date.from(cutoff));
     }
 }

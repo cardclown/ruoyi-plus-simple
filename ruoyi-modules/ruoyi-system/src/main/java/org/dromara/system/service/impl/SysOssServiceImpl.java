@@ -28,11 +28,13 @@ import org.dromara.common.oss.enums.AccessPolicyType;
 import org.dromara.system.domain.SysOss;
 import org.dromara.system.domain.SysOssExt;
 import org.dromara.system.domain.bo.SysOssBo;
+import org.dromara.system.domain.enums.OssFileType;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.ISysOssService;
-import org.dromara.system.service.support.ArticleOssUploadPolicy;
+import org.dromara.system.service.support.OssMediaUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
+import org.dromara.system.service.support.OssTemporaryObjectCleaner;
 import org.dromara.common.tenant.helper.TenantHelper;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.cache.annotation.Cacheable;
@@ -68,7 +70,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
 
     private final SysOssMapper baseMapper;
     private final OssClientProvider ossClientProvider;
-    private final ArticleOssUploadPolicy articleOssUploadPolicy;
+    private final OssMediaUploadPolicy mediaUploadPolicy;
+    private final OssTemporaryObjectCleaner temporaryObjectCleaner;
 
     /**
      * 查询OSS对象存储列表
@@ -182,7 +185,9 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         if (ids.isEmpty()) {
             return;
         }
-        List<SysOss> ossList = baseMapper.selectByIds(ids);
+        LambdaQueryWrapper<SysOss> lockQuery = Wrappers.lambdaQuery();
+        lockQuery.in(SysOss::getOssId, ids).orderByAsc(SysOss::getOssId).last("FOR UPDATE");
+        List<SysOss> ossList = baseMapper.selectList(lockQuery);
         if (ossList.size() != ids.size()) {
             throw new ServiceException("部分附件不存在或不属于当前租户");
         }
@@ -192,9 +197,9 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             ext.setRefId(refId);
             ext.setIsTemp(false);
             oss.setExt1(JsonUtils.toJsonString(ext));
-        }
-        if (!baseMapper.updateBatchById(ossList)) {
-            throw new ServiceException("附件绑定失败");
+            if (baseMapper.updateById(oss) != 1) {
+                throw new ServiceException("附件绑定失败");
+            }
         }
         ossList.forEach(oss -> CacheUtils.evict(CacheNames.SYS_OSS, oss.getOssId()));
     }
@@ -258,17 +263,20 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     @Override
-    public SysOssVo upload(MultipartFile file, String bizType) {
+    public SysOssVo upload(MultipartFile file, OssFileType fileType) {
         if (ObjectUtil.isNull(file) || file.isEmpty()) {
             throw new ServiceException("上传文件不能为空");
         }
-        articleOssUploadPolicy.validate(file, bizType);
+        String storedContentType = file.getContentType();
+        if (fileType != null) {
+            storedContentType = mediaUploadPolicy.validate(file, fileType);
+        }
         String originalfileName = file.getOriginalFilename();
         String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
         OssClient storage = ossClientProvider.current();
         UploadResult uploadResult = null;
         try (InputStream inputStream = file.getInputStream()) {
-            uploadResult = storage.uploadSuffix(inputStream, suffix, file.getSize(), file.getContentType());
+            uploadResult = storage.uploadSuffix(inputStream, suffix, file.getSize(), storedContentType);
         } catch (IOException e) {
             if (uploadResult != null) {
                 deleteUploadedObject(storage, uploadResult, e);
@@ -279,10 +287,10 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         }
         SysOssExt ext1 = new SysOssExt();
         ext1.setFileSize(file.getSize());
-        ext1.setContentType(file.getContentType());
+        ext1.setContentType(storedContentType);
         ext1.setIsTemp(true);
-        if (articleOssUploadPolicy.isArticleBizType(bizType)) {
-            ext1.setBizType(bizType);
+        if (fileType != null) {
+            ext1.setFileType(fileType.name());
             ext1.setSource("userUpload");
         }
         // 保存文件信息
@@ -394,44 +402,25 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void deleteExpiredArticleTemps(Date cutoff) {
+    public void deleteExpiredTemps(Date cutoff) {
         if (cutoff == null) {
             throw new IllegalArgumentException("cutoff must not be null");
         }
-        TenantHelper.ignore(() -> {
+        List<SysOss> candidates = TenantHelper.ignore(() -> {
             LambdaQueryWrapper<SysOss> query = Wrappers.lambdaQuery();
             query.lt(SysOss::getCreateTime, cutoff)
-                .and(group -> group
-                    .like(SysOss::getExt1, ArticleOssUploadPolicy.ARTICLE_ATTACHMENT)
-                    .or()
-                    .like(SysOss::getExt1, ArticleOssUploadPolicy.ARTICLE_VIDEO))
-                .orderByAsc(SysOss::getCreateTime)
-                .last("LIMIT " + TEMP_CLEANUP_BATCH_SIZE + " FOR UPDATE");
-            for (SysOss oss : baseMapper.selectList(query)) {
-                SysOssExt ext;
-                try {
-                    ext = parseExt(oss.getExt1());
-                } catch (RuntimeException exception) {
-                    log.warn("Unable to parse OSS metadata while cleaning temporary object: {}", oss.getOssId(), exception);
-                    continue;
-                }
-                if (!isExpiredUnboundArticleTemp(ext)) {
-                    continue;
-                }
-                ossClientProvider.byService(oss.getService()).delete(oss.getUrl());
-                if (baseMapper.deleteById(oss.getOssId()) != 1) {
-                    throw new ServiceException("临时附件记录删除失败");
-                }
-                CacheUtils.evict(CacheNames.SYS_OSS, oss.getOssId());
-            }
+                .like(SysOss::getExt1, "userUpload")
+                .orderByAsc(SysOss::getOssId)
+                .last("LIMIT " + TEMP_CLEANUP_BATCH_SIZE);
+            return baseMapper.selectList(query);
         });
-    }
-
-    private boolean isExpiredUnboundArticleTemp(SysOssExt ext) {
-        return Boolean.TRUE.equals(ext.getIsTemp())
-            && StringUtils.isBlank(ext.getRefId())
-            && articleOssUploadPolicy.isArticleBizType(ext.getBizType());
+        for (SysOss candidate : candidates) {
+            try {
+                temporaryObjectCleaner.cleanCandidate(candidate.getOssId(), cutoff);
+            } catch (RuntimeException exception) {
+                log.warn("Unable to clean temporary OSS object {}: {}", candidate.getOssId(), exception.getMessage());
+            }
+        }
     }
 
     /**
@@ -462,6 +451,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         SysOssExt ext = parseExt(vo.getExt1());
         dto.setFileSize(ext.getFileSize());
         dto.setContentType(ext.getContentType());
+        dto.setFileType(ext.getFileType());
         dto.setBizType(ext.getBizType());
         dto.setRefId(ext.getRefId());
         dto.setRefType(ext.getRefType());

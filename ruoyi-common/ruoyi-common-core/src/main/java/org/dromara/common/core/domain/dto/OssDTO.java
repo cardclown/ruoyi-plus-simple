@@ -54,6 +54,11 @@ public class OssDTO implements Serializable {
     private String contentType;
 
     /**
+     * 技术文件分类（IMAGE 或 VIDEO）
+     */
+    private String fileType;
+
+    /**
      * 所属业务类型
      */
     private String bizType;

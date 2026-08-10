@@ -13,6 +13,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.system.domain.bo.SysOssBo;
+import org.dromara.system.domain.enums.OssFileType;
 import org.dromara.system.domain.vo.SysOssUploadVo;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.service.ISysOssService;
@@ -70,8 +71,8 @@ public class SysOssController extends BaseController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public R<SysOssUploadVo> upload(
         @RequestPart("file") MultipartFile file,
-        @RequestParam(value = "bizType", required = false) String bizType) {
-        SysOssVo oss = ossService.upload(file, bizType);
+        @RequestParam(value = "fileType", required = false) OssFileType fileType) {
+        SysOssVo oss = ossService.upload(file, fileType);
         SysOssUploadVo uploadVo = new SysOssUploadVo();
         uploadVo.setUrl(oss.getUrl());
         uploadVo.setFileName(oss.getOriginalName());
