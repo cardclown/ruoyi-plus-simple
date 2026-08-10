@@ -3,7 +3,7 @@ package org.dromara.content.domain.bo;
 import lombok.Data;
 
 /**
- * 文章列表与导出查询条件。
+ * 仅承载文章列表和导出的业务筛选条件，分页与排序由独立的 {@code PageQuery} 提供。
  */
 @Data
 public class ContentArticleQuery {
