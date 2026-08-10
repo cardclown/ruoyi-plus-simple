@@ -247,6 +247,26 @@ class SysOssServiceImplTest {
     }
 
     @Test
+    void uploadDeletesObjectWhenMetadataCreationFailsBeforeInsert() {
+        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        UploadResult uploadResult = UploadResult.builder()
+            .filename("uploads/cover.png")
+            .url("https://bucket.example/uploads/cover.png")
+            .build();
+        when(ossClientProvider.current()).thenReturn(ossClient);
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+            .thenReturn(uploadResult);
+        when(ossClient.getConfigKey()).thenThrow(new IllegalStateException("metadata creation failed"));
+
+        assertThatThrownBy(() -> service.upload(file))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("metadata creation failed");
+
+        verify(mapper, never()).insert(any(SysOss.class));
+        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
+    }
+
+    @Test
     void deleteByIdsDoesNotRemoveDatabaseRowsWhenObjectDeletionFails() {
         SysOss stored = oss(10L, null);
         stored.setService("minio");

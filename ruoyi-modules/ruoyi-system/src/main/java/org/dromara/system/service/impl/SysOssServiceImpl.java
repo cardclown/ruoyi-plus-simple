@@ -298,25 +298,25 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     private SysOssVo buildResultEntity(String originalfileName, String suffix, OssClient storage,
                                        UploadResult uploadResult, SysOssExt ext1) {
         SysOss oss = new SysOss();
-        oss.setUrl(uploadResult.getUrl());
-        oss.setFileSuffix(suffix);
-        oss.setFileName(uploadResult.getFilename());
-        oss.setOriginalName(originalfileName);
-        oss.setService(storage.getConfigKey());
-        oss.setExt1(JsonUtils.toJsonString(ext1));
-        persistResultEntity(storage, uploadResult, oss);
+        try {
+            oss.setUrl(uploadResult.getUrl());
+            oss.setFileSuffix(suffix);
+            oss.setFileName(uploadResult.getFilename());
+            oss.setOriginalName(originalfileName);
+            oss.setService(storage.getConfigKey());
+            oss.setExt1(JsonUtils.toJsonString(ext1));
+            persistResultEntity(oss);
+        } catch (RuntimeException exception) {
+            deleteUploadedObject(storage, uploadResult, exception);
+            throw exception;
+        }
         SysOssVo sysOssVo = MapstructUtils.convert(oss, SysOssVo.class);
         return this.matchingUrl(sysOssVo);
     }
 
-    private void persistResultEntity(OssClient storage, UploadResult uploadResult, SysOss oss) {
-        try {
-            if (baseMapper.insert(oss) != 1) {
-                throw new ServiceException("文件信息保存失败");
-            }
-        } catch (RuntimeException exception) {
-            deleteUploadedObject(storage, uploadResult, exception);
-            throw exception;
+    private void persistResultEntity(SysOss oss) {
+        if (baseMapper.insert(oss) != 1) {
+            throw new ServiceException("文件信息保存失败");
         }
     }
 
