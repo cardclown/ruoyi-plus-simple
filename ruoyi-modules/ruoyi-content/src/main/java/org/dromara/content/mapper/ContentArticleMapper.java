@@ -24,6 +24,22 @@ import java.util.List;
 public interface ContentArticleMapper extends BaseMapperPlus<ContentArticle, ContentArticleVo> {
 
     /**
+     * 按指定租户分页查询已发布且未删除的公开文章。
+     */
+    Page<ContentArticle> selectPublishedArticlePage(
+        Page<ContentArticle> page,
+        @Param("tenantId") String tenantId,
+        @Param("title") String title,
+        @Param("categoryDictCode") Long categoryDictCode);
+
+    /**
+     * 按指定租户查询单篇已发布且未删除的公开文章。
+     */
+    ContentArticle selectPublishedArticleById(
+        @Param("tenantId") String tenantId,
+        @Param("articleId") Long articleId);
+
+    /**
      * 在数据权限范围内读取单篇文章。
      *
      * @param articleId 文章 ID

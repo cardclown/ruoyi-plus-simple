@@ -14,6 +14,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ContentArticleMapperContractTest {
 
     @Test
+    void publicReadEntryPointsDoNotRequireLoggedInUserDataPermission() {
+        for (String methodName : new String[]{
+            "selectPublishedArticlePage",
+            "selectPublishedArticleById"
+        }) {
+            Method method = Arrays.stream(ContentArticleMapper.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals(methodName))
+                .findFirst()
+                .orElseThrow();
+            assertThat(method.getAnnotation(DataPermission.class)).as(methodName).isNull();
+        }
+    }
+
+    @Test
     void allArticleReadAndWriteEntryPointsApplyCreatorDataPermission() {
         for (String methodName : new String[]{
             "selectArticleById",
