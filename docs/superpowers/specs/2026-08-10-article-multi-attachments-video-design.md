@@ -124,7 +124,8 @@
 ### MinIO 未完成分片
 
 - 应用在失败路径主动取消 multipart 上传。
-- MinIO bucket 配置未完成 multipart 的生命周期清理，作为进程崩溃和网络异常后的兜底。
+- 使用 MinIO 服务端 `api.stale_uploads_expiry=24h` 和 `api.stale_uploads_cleanup_interval=6h` 清理长时间无活动的 multipart，作为进程崩溃和网络异常后的兜底；持续传输中的长时间上传不属于 stale upload。
+- 不在未版本化 bucket 上使用普通 `--expire-days` 规则清理分片，因为该规则也可能删除已经上传完成的正式对象。
 - 上传经过后端，不需要为该功能增加 MinIO CORS 配置。
 
 ### 已上传但未保存文章的文件
@@ -218,7 +219,7 @@
 
 - Spring multipart 单文件和单请求上限需要覆盖 2 GiB 视频及 multipart 额外开销；图片业务层仍单独限制为 50 MiB。
 - 如果部署链路包含 Nginx或其他反向代理，其请求体上限、读取超时和发送超时也必须允许数小时的慢速上传。
-- MinIO 无需因 2 GiB 对象调整常规对象大小限制，但需要配置未完成 multipart 生命周期清理。
+- MinIO 无需因 2 GiB 对象调整常规对象大小限制；需要确认 stale multipart 过期时间不少于 24 小时、清理周期不超过 6 小时。
 - 当前单节点 MinIO 可以承载该功能，但不提供节点级冗余；生产数据可靠性仍需依靠备份或多节点部署。
 
 ## 错误处理
