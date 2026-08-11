@@ -278,7 +278,7 @@ public class ContentArticleAttachmentManager {
             throw new ServiceException("附件元数据不完整");
         }
         TechnicalMediaMetadataPolicy.validateSize(technicalType, size);
-        if (TechnicalMediaMetadataPolicy.canonicalContentType(
+        if (TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
             technicalType, file.getFileSuffix(), file.getContentType()).isEmpty()) {
             throw new ServiceException(type == ContentArticleAttachmentType.IMAGE
                 ? "图片文件格式不合法" : "视频文件格式不合法");

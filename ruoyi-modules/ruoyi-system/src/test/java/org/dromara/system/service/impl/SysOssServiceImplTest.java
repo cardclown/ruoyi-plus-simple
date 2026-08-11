@@ -204,7 +204,8 @@ class SysOssServiceImplTest {
     @Test
     void classifiedUploadPersistsTechnicalTypeCanonicalMimeAndGenericTemporarySource() {
         byte[] content = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
-        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/x-png; charset=binary", content);
+        MockMultipartFile file = multipartFileRejectingGetBytes(
+            "archive.2026.COVER.PNG", "image/x-png; charset=binary", content);
         UploadResult uploadResult = UploadResult.builder()
             .filename("uploads/cover.png")
             .url("https://bucket.example/uploads/cover.png")
@@ -222,6 +223,7 @@ class SysOssServiceImplTest {
         service.upload(file, OssFileType.IMAGE);
 
         verify(mapper).insert(ossCaptor.capture());
+        assertThat(ossCaptor.getValue().getFileSuffix()).isEqualTo(".png");
         SysOssExt ext = JsonUtils.parseObject(ossCaptor.getValue().getExt1(), SysOssExt.class);
         assertThat(ext)
             .extracting(SysOssExt::getFileType, SysOssExt::getContentType, SysOssExt::getSource,

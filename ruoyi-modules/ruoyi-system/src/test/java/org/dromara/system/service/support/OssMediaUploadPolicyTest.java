@@ -32,9 +32,9 @@ class OssMediaUploadPolicyTest {
         OssFileType fileType, String filename, String declaredType, byte[] header, String canonicalType) throws IOException {
         MultipartFile file = mockFile(filename, declaredType, 12L, header);
 
-        String detectedType = policy.validate(file, fileType);
+        OssMediaUploadPolicy.ValidatedMedia detected = policy.validate(file, fileType);
 
-        assertThat(detectedType).isEqualTo(canonicalType);
+        assertThat(detected.contentType()).isEqualTo(canonicalType);
     }
 
     @Test
@@ -60,6 +60,15 @@ class OssMediaUploadPolicyTest {
     @Test
     void rejectsAFileWhoseNameAndMimeSpoofAnImage() throws IOException {
         MultipartFile file = mockFile("a.png", "image/png", 4L, new byte[]{'M', 'Z', 0, 0});
+
+        assertThatThrownBy(() -> policy.validate(file, OssFileType.IMAGE))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("图片文件内容与格式不匹配");
+    }
+
+    @Test
+    void rejectsDotlessOriginalFilenameEvenWhenMimeAndSignatureAreValid() throws IOException {
+        MultipartFile file = mockFile("png", "image/png", 8L, png());
 
         assertThatThrownBy(() -> policy.validate(file, OssFileType.IMAGE))
             .isInstanceOf(ServiceException.class)
@@ -119,7 +128,8 @@ class OssMediaUploadPolicyTest {
         return Stream.of(
             Arguments.of(OssFileType.IMAGE, "a.jpg", "image/pjpeg; charset=binary", jpeg(), "image/jpeg"),
             Arguments.of(OssFileType.IMAGE, "a.jpeg", "image/jpeg", jpeg(), "image/jpeg"),
-            Arguments.of(OssFileType.IMAGE, "a.png", "image/x-png", png(), "image/png"),
+            Arguments.of(OssFileType.IMAGE, "C:\\incoming.dir\\archive.2026.final.png", "image/x-png",
+                png(), "image/png"),
             Arguments.of(OssFileType.IMAGE, "a.gif", "image/gif", ascii("GIF89a"), "image/gif"),
             Arguments.of(OssFileType.IMAGE, "a.webp", "image/webp", riff("WEBP"), "image/webp"),
             Arguments.of(OssFileType.VIDEO, "a.mp4", "application/mp4", mp4(), "video/mp4"),

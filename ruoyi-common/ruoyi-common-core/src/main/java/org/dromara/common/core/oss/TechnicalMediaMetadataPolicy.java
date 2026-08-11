@@ -57,11 +57,28 @@ public final class TechnicalMediaMetadataPolicy {
     }
 
     /**
-     * 按技术类型、扩展名和已声明 MIME 返回标准 MIME。
+     * 从完整原始文件名提取标准后缀。文件名必须包含最后一个非空扩展名。
      */
-    public static Optional<String> canonicalContentType(TechnicalMediaType type, String filenameOrSuffix,
-                                                         String contentType) {
-        String extension = normalizeExtension(filenameOrSuffix);
+    public static Optional<String> fileSuffixFromOriginalFilename(String originalFilename) {
+        if (originalFilename == null) {
+            return Optional.empty();
+        }
+        String value = originalFilename.trim();
+        int lastSeparator = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        int lastDot = value.lastIndexOf('.');
+        if (lastDot <= lastSeparator || lastDot == value.length() - 1) {
+            return Optional.empty();
+        }
+        String extension = normalizeExtensionValue(value.substring(lastDot + 1));
+        return extension.isEmpty() ? Optional.empty() : Optional.of('.' + extension);
+    }
+
+    /**
+     * 按技术类型、已存储后缀和已声明 MIME 返回标准 MIME。
+     */
+    public static Optional<String> canonicalContentTypeForStoredSuffix(TechnicalMediaType type, String storedSuffix,
+                                                                        String contentType) {
+        String extension = normalizeStoredSuffix(storedSuffix);
         String normalizedContentType = normalizeContentType(contentType);
         return FORMATS.stream()
             .filter(format -> format.type() == type)
@@ -71,16 +88,19 @@ public final class TechnicalMediaMetadataPolicy {
             .findFirst();
     }
 
-    /**
-     * 从文件名或扩展名中得到小写、不带点的扩展名。
-     */
-    public static String normalizeExtension(String filenameOrSuffix) {
-        if (filenameOrSuffix == null) {
+    private static String normalizeStoredSuffix(String storedSuffix) {
+        if (storedSuffix == null) {
             return "";
         }
-        String value = filenameOrSuffix.trim();
-        int dot = value.lastIndexOf('.');
-        String extension = dot >= 0 ? value.substring(dot + 1) : value;
+        String value = storedSuffix.trim();
+        String extension = value.startsWith(".") ? value.substring(1) : value;
+        if (extension.indexOf('.') >= 0 || extension.indexOf('/') >= 0 || extension.indexOf('\\') >= 0) {
+            return "";
+        }
+        return normalizeExtensionValue(extension);
+    }
+
+    private static String normalizeExtensionValue(String extension) {
         return extension.trim().toLowerCase(Locale.ROOT);
     }
 

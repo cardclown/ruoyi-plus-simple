@@ -21,16 +21,24 @@ class TechnicalMediaMetadataPolicyTest {
     @MethodSource("supportedMetadata")
     void canonicalizesEverySupportedSuffixAndMimeAlias(TechnicalMediaType type, String suffix,
                                                         String contentType, String canonicalType) {
-        assertThat(TechnicalMediaMetadataPolicy.canonicalContentType(type, suffix, contentType))
+        assertThat(TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(type, suffix, contentType))
             .contains(canonicalType);
     }
 
     @Test
     void rejectsCrossTypeAndMismatchedMetadata() {
-        assertThat(TechnicalMediaMetadataPolicy.canonicalContentType(
+        assertThat(TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
             TechnicalMediaType.VIDEO, ".png", "image/png")).isEmpty();
-        assertThat(TechnicalMediaMetadataPolicy.canonicalContentType(
+        assertThat(TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
             TechnicalMediaType.IMAGE, ".png", "image/jpeg")).isEmpty();
+    }
+
+    @Test
+    void normalizesStoredSuffixWithOrWithoutALeadingDot() {
+        assertThat(TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
+            TechnicalMediaType.IMAGE, ".png", "image/png")).contains("image/png");
+        assertThat(TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
+            TechnicalMediaType.IMAGE, "png", "image/png")).contains("image/png");
     }
 
     @Test

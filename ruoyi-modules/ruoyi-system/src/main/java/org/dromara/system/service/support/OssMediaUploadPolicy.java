@@ -40,11 +40,13 @@ public class OssMediaUploadPolicy {
         Map.entry("video/x-flv", OssMediaUploadPolicy::isFlv)
     );
 
-    public String validate(MultipartFile file, OssFileType fileType) {
+    public ValidatedMedia validate(MultipartFile file, OssFileType fileType) {
         TechnicalMediaType technicalType = TechnicalMediaType.valueOf(fileType.name());
         TechnicalMediaMetadataPolicy.validateSize(technicalType, file.getSize());
-        String canonicalType = TechnicalMediaMetadataPolicy.canonicalContentType(
-            technicalType, file.getOriginalFilename(), file.getContentType()).orElseThrow(() -> mismatch(fileType));
+        String fileSuffix = TechnicalMediaMetadataPolicy.fileSuffixFromOriginalFilename(file.getOriginalFilename())
+            .orElseThrow(() -> mismatch(fileType));
+        String canonicalType = TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
+            technicalType, fileSuffix, file.getContentType()).orElseThrow(() -> mismatch(fileType));
         byte[] prefix;
         try (InputStream input = file.getInputStream()) {
             prefix = input.readNBytes(MAX_PROBE_BYTES);
@@ -57,7 +59,7 @@ public class OssMediaUploadPolicy {
         if (matcher == null || !matcher.matches(prefix)) {
             throw mismatch(fileType);
         }
-        return canonicalType;
+        return new ValidatedMedia(fileSuffix, canonicalType);
     }
 
     private static ServiceException mismatch(OssFileType fileType) {
@@ -195,6 +197,9 @@ public class OssMediaUploadPolicy {
     }
 
     private record Vint(int length, long value) {
+    }
+
+    public record ValidatedMedia(String fileSuffix, String contentType) {
     }
 
     @FunctionalInterface

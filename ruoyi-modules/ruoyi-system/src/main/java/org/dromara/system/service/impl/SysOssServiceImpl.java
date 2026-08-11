@@ -279,12 +279,16 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         if (ObjectUtil.isNull(file) || file.isEmpty()) {
             throw new ServiceException("上传文件不能为空");
         }
-        String storedContentType = file.getContentType();
-        if (fileType != null) {
-            storedContentType = mediaUploadPolicy.validate(file, fileType);
-        }
         String originalfileName = file.getOriginalFilename();
-        String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
+        String storedContentType = file.getContentType();
+        String suffix;
+        if (fileType != null) {
+            OssMediaUploadPolicy.ValidatedMedia validatedMedia = mediaUploadPolicy.validate(file, fileType);
+            storedContentType = validatedMedia.contentType();
+            suffix = validatedMedia.fileSuffix();
+        } else {
+            suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."), originalfileName.length());
+        }
         OssClient storage = ossClientProvider.current();
         UploadResult uploadResult = null;
         try (InputStream inputStream = file.getInputStream()) {
