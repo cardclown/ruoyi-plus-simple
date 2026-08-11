@@ -22,3 +22,9 @@ mvn -pl ruoyi-modules/ruoyi-content -DskipTests=false test
 mvn -pl ruoyi-admin -Dtest=UndertowUploadLimitBindingTest -DskipTests=false test
 git diff --check
 ```
+
+## Fair retry follow-up
+
+- Replaced the fixed lowest-ID retry page with a bounded wrapping `oss_id` keyset cursor. A full page advances to IDs above its last row even when individual deletions fail; a short or empty page resets the cursor so early failures are retried on a later run.
+- Behavioral RED reproduced three repeated attempts of IDs 1–100 with no attempt for ID 101. GREEN reached ID 101 on the second run while ID 1 kept failing, then wrapped and retried ID 1 on the third run.
+- Focused system deletion/OSS tests passed 26/26 with zero failures, errors, or skips.

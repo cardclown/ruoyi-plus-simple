@@ -12,6 +12,7 @@ import org.dromara.system.mapper.SysOssMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Runs one bounded retry page for committed pending deletions. */
 @Slf4j
@@ -23,16 +24,24 @@ public class OssPendingDeletionRetrier {
 
     private final SysOssMapper mapper;
     private final OssPendingDeletionWorker worker;
+    private final AtomicLong retryCursor = new AtomicLong();
 
     public void retryBatch() {
+        long cursor = retryCursor.get();
         List<SysOss> candidates = TenantHelper.ignore(() -> {
             LambdaQueryWrapper<SysOss> query = Wrappers.lambdaQuery();
             query.like(SysOss::getExt1, OssBusinessDeletionCoordinator.PENDING_JSON_MARKER)
+                .gt(cursor > 0L, SysOss::getOssId, cursor)
                 .orderByAsc(SysOss::getOssId)
                 .last("LIMIT " + BATCH_SIZE);
             return mapper.selectList(query);
         });
-        candidates.stream().limit(BATCH_SIZE).forEach(candidate -> {
+        if (candidates.isEmpty()) {
+            retryCursor.set(0L);
+            return;
+        }
+        List<SysOss> page = candidates.stream().limit(BATCH_SIZE).toList();
+        page.forEach(candidate -> {
             try {
                 SysOssExt ext = JsonUtils.parseObject(candidate.getExt1(), SysOssExt.class);
                 if (ext != null && OssBusinessDeletionCoordinator.PENDING.equals(ext.getDeleteStatus())) {
@@ -43,5 +52,7 @@ public class OssPendingDeletionRetrier {
                     candidate.getOssId(), exception.getMessage());
             }
         });
+        retryCursor.set(page.size() < BATCH_SIZE
+            ? 0L : page.get(page.size() - 1).getOssId());
     }
 }
