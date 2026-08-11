@@ -76,12 +76,13 @@ Content-Type: multipart/form-data
 
 表单参数：
 
-| 参数 | 图片 | 视频 |
+| 参数 | 必填 | 说明 |
 | --- | --- | --- |
-| `file` | 图片文件 | 视频文件 |
-| `fileType` | `IMAGE` | `VIDEO` |
+| `file` | 是 | 图片或视频文件 |
 
-不需要传 `bizType`。图片和视频共用同一个上传接口，通过 `fileType` 区分技术文件类型。
+不需要传 `bizType` 或 `fileType`。后端会在上传阶段识别可支持的图片、视频并校验文件签名；
+保存文章时，以 `attachmentOssIds`、`videoOssIds` 所在字段确定最终类型，并再次校验后回写 OSS 元数据。
+旧前端继续传 `fileType` 仍可兼容，但传入值与实际文件或文章字段冲突时会被拒绝。
 
 上传成功后使用：
 

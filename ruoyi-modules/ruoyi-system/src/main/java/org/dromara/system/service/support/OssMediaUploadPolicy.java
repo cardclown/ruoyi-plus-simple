@@ -12,10 +12,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
- * Bounded signature validation for technically classified media uploads.
+ * 图片、视频上传的有界文件签名校验策略。
+ *
+ * <p>只读取文件头部固定大小的数据，不把大文件完整载入 JVM；类型推断只作为上传阶段的
+ * 技术分类，最终仍由具体业务字段在绑定时确认。</p>
  */
 @Component
 public class OssMediaUploadPolicy {
@@ -39,6 +43,34 @@ public class OssMediaUploadPolicy {
         Map.entry("video/x-ms-wmv", OssMediaUploadPolicy::isWmv),
         Map.entry("video/x-flv", OssMediaUploadPolicy::isFlv)
     );
+
+    /**
+     * 根据文件名后缀和声明 MIME 推断可识别的图片或视频类型。
+     *
+     * <p>该方法不单独构成安全校验；调用方取得候选类型后必须继续调用 {@link #validate}
+     * 检查文件签名。普通文档等非媒体文件返回空，继续走通用上传链路。</p>
+     *
+     * @param file 待上传文件
+     * @return 可识别的技术媒体类型
+     */
+    public Optional<OssFileType> detectFromMetadata(MultipartFile file) {
+        if (file == null) {
+            return Optional.empty();
+        }
+        Optional<String> suffix = TechnicalMediaMetadataPolicy
+            .fileSuffixFromOriginalFilename(file.getOriginalFilename());
+        if (suffix.isEmpty()) {
+            return Optional.empty();
+        }
+        for (OssFileType fileType : OssFileType.values()) {
+            TechnicalMediaType technicalType = TechnicalMediaType.valueOf(fileType.name());
+            if (TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
+                technicalType, suffix.get(), file.getContentType()).isPresent()) {
+                return Optional.of(fileType);
+            }
+        }
+        return Optional.empty();
+    }
 
     public ValidatedMedia validate(MultipartFile file, OssFileType fileType) {
         TechnicalMediaType technicalType = TechnicalMediaType.valueOf(fileType.name());

@@ -1,6 +1,7 @@
 package org.dromara.common.core.service;
 
 import org.dromara.common.core.domain.dto.OssDTO;
+import org.dromara.common.core.oss.TechnicalMediaType;
 
 import java.util.Collection;
 import java.util.List;
@@ -53,6 +54,19 @@ public interface OssService {
      * @param refId   业务引用 ID
      */
     void bindToBusiness(Collection<Long> ossIds, String refType, String refId);
+
+    /**
+     * 按业务字段声明的媒体类型绑定附件。
+     *
+     * <p>调用方必须根据图片、视频等业务字段生成映射；实现方在持有 OSS 行锁后再次校验
+     * 文件元数据，并把技术类型与业务引用一并写入，避免并发绑定造成类型或归属不一致。</p>
+     *
+     * @param mediaTypes OSS ID 到业务字段所要求技术类型的映射
+     * @param refType    业务引用类型
+     * @param refId      业务引用 ID
+     * @throws org.dromara.common.core.exception.ServiceException 文件类型、元数据或业务归属不合法时抛出
+     */
+    void bindMediaToBusiness(Map<Long, TechnicalMediaType> mediaTypes, String refType, String refId);
 
     /**
      * 强制删除附件

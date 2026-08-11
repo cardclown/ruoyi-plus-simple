@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.constant.CacheNames;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.oss.TechnicalMediaMetadataPolicy;
+import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.SpringUtils;
@@ -211,6 +213,33 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         if (ids.isEmpty()) {
             return;
         }
+        bindToBusiness(ids, refType, refId, Map.of());
+    }
+
+    /**
+     * 使用业务字段确定的媒体类型绑定 OSS。
+     *
+     * <p>类型判断必须在锁定 OSS 行后再次执行，防止附件在文章校验与绑定之间被其他请求改变。
+     * 空的历史技术类型可以由业务字段补齐；已有类型与业务字段冲突时禁止覆盖。</p>
+     *
+     * @param mediaTypes OSS ID 到图片或视频技术类型的映射
+     * @param refType    业务引用类型
+     * @param refId      业务引用 ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void bindMediaToBusiness(Map<Long, TechnicalMediaType> mediaTypes, String refType, String refId) {
+        if (mediaTypes == null || mediaTypes.isEmpty()) {
+            return;
+        }
+        if (mediaTypes.entrySet().stream().anyMatch(entry -> entry.getKey() == null || entry.getValue() == null)) {
+            throw new ServiceException("附件ID和媒体类型不能为空");
+        }
+        bindToBusiness(new ArrayList<>(mediaTypes.keySet()), refType, refId, mediaTypes);
+    }
+
+    private void bindToBusiness(List<Long> ids, String refType, String refId,
+                                Map<Long, TechnicalMediaType> mediaTypes) {
         LambdaQueryWrapper<SysOss> lockQuery = Wrappers.lambdaQuery();
         lockQuery.in(SysOss::getOssId, ids).orderByAsc(SysOss::getOssId).last("FOR UPDATE");
         List<SysOss> ossList = baseMapper.selectList(lockQuery);
@@ -228,9 +257,17 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             if (!unbound && !sameReference) {
                 throw new ServiceException("附件已绑定其他业务");
             }
+            TechnicalMediaType mediaType = mediaTypes.get(oss.getOssId());
+            if (mediaType != null) {
+                validateMediaMetadata(oss, ext, mediaType);
+            }
         }
         for (SysOss oss : ossList) {
             SysOssExt ext = parseExt(oss.getExt1());
+            TechnicalMediaType mediaType = mediaTypes.get(oss.getOssId());
+            if (mediaType != null) {
+                ext.setFileType(mediaType.name());
+            }
             ext.setRefType(refType);
             ext.setRefId(refId);
             ext.setIsTemp(false);
@@ -240,6 +277,22 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             }
         }
         ossList.forEach(oss -> CacheUtils.evict(CacheNames.SYS_OSS, oss.getOssId()));
+    }
+
+    private static void validateMediaMetadata(SysOss oss, SysOssExt ext, TechnicalMediaType mediaType) {
+        if (StringUtils.isNotBlank(ext.getFileType())
+            && !mediaType.name().equalsIgnoreCase(ext.getFileType())) {
+            throw new ServiceException("附件类型与文章媒体类型不匹配");
+        }
+        if (ext.getFileSize() == null || ext.getFileSize() < 0) {
+            throw new ServiceException("附件元数据不完整");
+        }
+        TechnicalMediaMetadataPolicy.validateSize(mediaType, ext.getFileSize());
+        if (TechnicalMediaMetadataPolicy.canonicalContentTypeForStoredSuffix(
+            mediaType, oss.getFileSuffix(), ext.getContentType()).isEmpty()) {
+            throw new ServiceException(mediaType == TechnicalMediaType.IMAGE
+                ? "图片文件格式不合法" : "视频文件格式不合法");
+        }
     }
 
     private LambdaQueryWrapper<SysOss> buildQueryWrapper(SysOssBo bo) {
@@ -309,8 +362,11 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         String originalfileName = file.getOriginalFilename();
         String storedContentType = file.getContentType();
         String suffix;
-        if (fileType != null) {
-            OssMediaUploadPolicy.ValidatedMedia validatedMedia = mediaUploadPolicy.validate(file, fileType);
+        // 前端无需为文章上传重复声明类型；可识别媒体由后端先做签名校验，绑定时再由业务字段确认。
+        OssFileType effectiveFileType = fileType == null
+            ? mediaUploadPolicy.detectFromMetadata(file).orElse(null) : fileType;
+        if (effectiveFileType != null) {
+            OssMediaUploadPolicy.ValidatedMedia validatedMedia = mediaUploadPolicy.validate(file, effectiveFileType);
             storedContentType = validatedMedia.contentType();
             suffix = validatedMedia.fileSuffix();
         } else {
@@ -332,8 +388,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ext1.setFileSize(file.getSize());
         ext1.setContentType(storedContentType);
         ext1.setIsTemp(true);
-        if (fileType != null) {
-            ext1.setFileType(fileType.name());
+        if (effectiveFileType != null) {
+            ext1.setFileType(effectiveFileType.name());
             ext1.setSource("userUpload");
         }
         // 保存文件信息

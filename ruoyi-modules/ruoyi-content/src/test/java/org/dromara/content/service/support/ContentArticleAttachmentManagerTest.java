@@ -3,6 +3,7 @@ package org.dromara.content.service.support;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleAttachment;
@@ -97,7 +98,7 @@ class ContentArticleAttachmentManagerTest {
             .isInstanceOf(ServiceException.class).hasMessage("附件不存在或无权访问");
 
         verify(ossService).selectByIds(List.of(10L, 20L));
-        verify(ossService, never()).bindToBusiness(anyCollection(), any(), any());
+        verify(ossService, never()).bindMediaToBusiness(any(), any(), any());
         verify(mapper, never()).insertBatch(anyCollection());
     }
 
@@ -126,7 +127,7 @@ class ContentArticleAttachmentManagerTest {
     }
 
     @Test
-    void preservesOnlyAnUnchangedValidLegacyImageRelation() {
+    void backfillsTheTypeOfAnUnclassifiedExistingImageRelation() {
         ContentArticleAttachment existing = relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0);
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(existing));
         OssDTO legacy = image(10L);
@@ -138,12 +139,27 @@ class ContentArticleAttachmentManagerTest {
 
         manager.replace(100L, List.of(10L), List.of());
 
-        verify(ossService, never()).bindToBusiness(anyCollection(), any(), any());
+        verify(ossService).bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE), "content_article", "100");
         verify(mapper, never()).insertBatch(anyCollection());
+    }
 
+    @Test
+    void classifiesUnclassifiedMetadataFromTheArticleMediaFields() {
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
-        assertThatThrownBy(() -> manager.replace(100L, List.of(10L), List.of()))
-            .isInstanceOf(ServiceException.class).hasMessage("附件类型与文章媒体类型不匹配");
+        OssDTO unclassifiedImage = image(10L);
+        unclassifiedImage.setFileType(null);
+        OssDTO unclassifiedVideo = video(20L);
+        unclassifiedVideo.setFileType(null);
+        when(ossService.selectByIds(List.of(10L, 20L)))
+            .thenReturn(List.of(unclassifiedImage, unclassifiedVideo));
+        when(mapper.insertBatch(anyCollection())).thenReturn(true);
+
+        manager.replace(100L, List.of(10L), List.of(20L));
+
+        verify(ossService).bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE, 20L, TechnicalMediaType.VIDEO),
+            "content_article", "100");
     }
 
     @Test
@@ -175,7 +191,7 @@ class ContentArticleAttachmentManagerTest {
         assertThatThrownBy(() -> manager.replace(100L, List.of(10L), List.of(20L)))
             .isInstanceOf(ServiceException.class).hasMessage("单个视频不能超过2GB");
 
-        verify(ossService, never()).bindToBusiness(anyCollection(), any(), any());
+        verify(ossService, never()).bindMediaToBusiness(any(), any(), any());
         verify(mapper, never()).insertBatch(anyCollection());
     }
 
@@ -200,7 +216,9 @@ class ContentArticleAttachmentManagerTest {
             .containsExactly(tuple(100L, 21L, "1", 0, 9L, new Date(1_000L)));
 
         InOrder order = inOrder(ossService, mapper);
-        order.verify(ossService).bindToBusiness(List.of(21L), "content_article", "100");
+        order.verify(ossService).bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE, 21L, TechnicalMediaType.VIDEO),
+            "content_article", "100");
         order.verify(mapper).insertBatch(anyCollection());
         order.verify(mapper).deleteByIds(List.of(2L));
         order.verify(ossService).scheduleBusinessDeletion(Map.of(20L, "100"), "content_article");
@@ -370,7 +388,8 @@ class ContentArticleAttachmentManagerTest {
             org.mockito.Mockito.doAnswer(invocation -> {
                 jdbc.update("update sys_oss set ref_id = '100' where oss_id = 10");
                 return null;
-            }).when(txOss).bindToBusiness(List.of(10L), "content_article", "100");
+            }).when(txOss).bindMediaToBusiness(
+                Map.of(10L, TechnicalMediaType.IMAGE), "content_article", "100");
             when(txMapper.insertBatch(anyCollection())).thenAnswer(invocation -> {
                 jdbc.update("insert into content_article_attachment (article_id, oss_id) values (100, 10)");
                 return false;

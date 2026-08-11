@@ -65,7 +65,7 @@ public interface ISysOssService {
      * 上传带技术文件分类的 MultipartFile。
      *
      * @param file 文件
-     * @param fileType 技术文件分类，可为空
+     * @param fileType 技术文件分类；为空时后端对可识别的图片、视频自动推断并校验
      * @return 上传结果
      */
     SysOssVo upload(MultipartFile file, OssFileType fileType);

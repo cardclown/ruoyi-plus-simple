@@ -78,8 +78,8 @@ public class ContentArticleAttachmentManager {
         rejectForeignRelations(articleId, targetIds, relevantRelations);
 
         Map<Long, OssDTO> metadataById = loadExactMetadata(targetIds);
-        validateTargets(articleId, imageIds, ContentArticleAttachmentType.IMAGE, currentByOssId, metadataById);
-        validateTargets(articleId, videoIds, ContentArticleAttachmentType.VIDEO, currentByOssId, metadataById);
+        validateTargets(articleId, imageIds, ContentArticleAttachmentType.IMAGE, metadataById);
+        validateTargets(articleId, videoIds, ContentArticleAttachmentType.VIDEO, metadataById);
 
         List<ContentArticleAttachment> inserts = new ArrayList<>();
         List<ContentArticleAttachment> updates = new ArrayList<>();
@@ -90,10 +90,12 @@ public class ContentArticleAttachmentManager {
             .filter(relation -> !targetIdSet.contains(relation.getOssId()))
             .toList();
 
-        // bindToBusiness 对 sys_oss 行加锁；外层事务保证后续关联失败时绑定一并回滚。
-        List<Long> newIds = inserts.stream().map(ContentArticleAttachment::getOssId).toList();
-        if (!newIds.isEmpty()) {
-            ossService.bindToBusiness(newIds, ARTICLE_REF_TYPE, articleId.toString());
+        // 文章字段是媒体类型的业务事实来源；绑定时回写全部目标，可同时修复历史空类型数据。
+        Map<Long, TechnicalMediaType> mediaTypes = new LinkedHashMap<>();
+        imageIds.forEach(ossId -> mediaTypes.put(ossId, TechnicalMediaType.IMAGE));
+        videoIds.forEach(ossId -> mediaTypes.put(ossId, TechnicalMediaType.VIDEO));
+        if (!mediaTypes.isEmpty()) {
+            ossService.bindMediaToBusiness(mediaTypes, ARTICLE_REF_TYPE, articleId.toString());
         }
         if (!inserts.isEmpty() && !mapper.insertBatch(inserts)) {
             throw new ServiceException("文章附件保存失败");
@@ -360,18 +362,14 @@ public class ContentArticleAttachmentManager {
     }
 
     private static void validateTargets(Long articleId, List<Long> ids, ContentArticleAttachmentType type,
-                                        Map<Long, ContentArticleAttachment> currentByOssId,
                                         Map<Long, OssDTO> metadataById) {
         for (Long id : ids) {
             OssDTO file = metadataById.get(id);
             validateReference(articleId, file);
-            ContentArticleAttachment existing = currentByOssId.get(id);
-            boolean unchangedLegacyImage = type == ContentArticleAttachmentType.IMAGE
-                && existing != null
-                && ContentArticleAttachmentType.IMAGE.getCode().equals(existing.getAttachmentType())
-                && isBlank(file.getFileType());
             TechnicalMediaType technicalType = technicalType(type);
-            if (!unchangedLegacyImage && !technicalType.name().equalsIgnoreCase(value(file.getFileType()))) {
+            // 通用上传允许技术类型暂为空；文章字段确定类型后，由绑定操作在行锁内持久化。
+            if (!isBlank(file.getFileType())
+                && !technicalType.name().equalsIgnoreCase(value(file.getFileType()))) {
                 throw new ServiceException("附件类型与文章媒体类型不匹配");
             }
             validateMediaMetadata(file, type, technicalType);

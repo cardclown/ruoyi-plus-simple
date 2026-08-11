@@ -5,13 +5,13 @@ import io.github.linpeilie.Converter;
 import org.dromara.common.core.utils.SpringUtils;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.oss.core.OssClient;
 import org.dromara.common.oss.entity.UploadResult;
 import org.dromara.common.oss.enums.AccessPolicyType;
 import org.dromara.system.domain.SysOss;
 import org.dromara.system.domain.SysOssExt;
-import org.dromara.system.domain.enums.OssFileType;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.support.OssMediaUploadPolicy;
@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.LongStream;
 
@@ -214,6 +215,55 @@ class SysOssServiceImplTest {
     }
 
     @Test
+    void mediaBindingClassifiesFilesFromBusinessFieldsAfterValidatingStoredMetadata() {
+        when(mapper.selectList(any())).thenReturn(List.of(
+            mediaOss(10L, ".jpg", 1024L, "image/jpeg", "{\"isTemp\":true}"),
+            mediaOss(20L, ".mp4", 2048L, "video/mp4", "{\"isTemp\":true}")));
+        when(mapper.updateById(any(SysOss.class))).thenReturn(1);
+
+        service.bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE, 20L, TechnicalMediaType.VIDEO),
+            "content_article", "100");
+
+        verify(mapper, times(2)).updateById(ossCaptor.capture());
+        assertThat(ossCaptor.getAllValues()).allSatisfy(oss -> {
+            SysOssExt ext = JsonUtils.parseObject(oss.getExt1(), SysOssExt.class);
+            assertThat(ext.getFileType()).isEqualTo(
+                oss.getOssId().equals(10L) ? "IMAGE" : "VIDEO");
+            assertThat(ext)
+                .extracting(SysOssExt::getRefType, SysOssExt::getRefId, SysOssExt::getIsTemp)
+                .containsExactly("content_article", "100", false);
+        });
+    }
+
+    @Test
+    void mediaBindingRejectsAStoredTypeThatConflictsWithTheBusinessField() {
+        when(mapper.selectList(any())).thenReturn(List.of(
+            mediaOss(10L, ".jpg", 1024L, "image/jpeg",
+                "{\"fileType\":\"VIDEO\",\"isTemp\":true}")));
+
+        assertThatThrownBy(() -> service.bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE), "content_article", "100"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("附件类型与文章媒体类型不匹配");
+
+        verify(mapper, never()).updateById(any(SysOss.class));
+    }
+
+    @Test
+    void mediaBindingRejectsMetadataThatDoesNotMatchTheBusinessField() {
+        when(mapper.selectList(any())).thenReturn(List.of(
+            mediaOss(10L, ".mp4", 1024L, "video/mp4", "{\"isTemp\":true}")));
+
+        assertThatThrownBy(() -> service.bindMediaToBusiness(
+            Map.of(10L, TechnicalMediaType.IMAGE), "content_article", "100"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("图片文件格式不合法");
+
+        verify(mapper, never()).updateById(any(SysOss.class));
+    }
+
+    @Test
     void bindRejectsLockedAttachmentWhoseOwnerChangedBeforeTheLockWasAcquired() {
         when(mapper.selectList(any())).thenReturn(List.of(oss(10L,
             "{\"refType\":\"content_article\",\"refId\":\"99\",\"isTemp\":false}")));
@@ -255,13 +305,13 @@ class SysOssServiceImplTest {
 
     @Test
     void uploadPersistsNewAttachmentAsTemporary() {
-        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile file = multipartFileRejectingGetBytes("notes.txt", "text/plain", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()
-            .filename("uploads/cover.png")
-            .url("https://bucket.example/uploads/cover.png")
+            .filename("uploads/notes.txt")
+            .url("https://bucket.example/uploads/notes.txt")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".txt"), eq(3L), eq("text/plain")))
             .thenReturn(uploadResult);
         when(ossClient.getConfigKey()).thenReturn("minio");
         when(ossClientProvider.byService("minio")).thenReturn(ossClient);
@@ -274,14 +324,14 @@ class SysOssServiceImplTest {
         assertThat(ext)
             .extracting(SysOssExt::getFileSize, SysOssExt::getContentType, SysOssExt::getIsTemp,
                 SysOssExt::getFileType, SysOssExt::getSource)
-            .containsExactly(3L, "image/png", true, null, null);
+            .containsExactly(3L, "text/plain", true, null, null);
         assertThat(result)
             .extracting(SysOssVo::getFileName, SysOssVo::getOriginalName, SysOssVo::getUrl)
-            .containsExactly("uploads/cover.png", "cover.png", "https://bucket.example/uploads/cover.png");
+            .containsExactly("uploads/notes.txt", "notes.txt", "https://bucket.example/uploads/notes.txt");
     }
 
     @Test
-    void classifiedUploadPersistsTechnicalTypeCanonicalMimeAndGenericTemporarySource() {
+    void genericUploadInfersMediaTypeAndValidatesTheSignatureWithoutAFrontendType() {
         byte[] content = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         MockMultipartFile file = multipartFileRejectingGetBytes(
             "archive.2026.COVER.PNG", "image/x-png; charset=binary", content);
@@ -299,7 +349,7 @@ class SysOssServiceImplTest {
         when(ossClientProvider.byService("minio")).thenReturn(ossClient);
         when(mapper.insert(any(SysOss.class))).thenReturn(1);
 
-        service.upload(file, OssFileType.IMAGE);
+        service.upload(file);
 
         verify(mapper).insert(ossCaptor.capture());
         assertThat(ossCaptor.getValue().getFileSuffix()).isEqualTo(".png");
@@ -322,13 +372,13 @@ class SysOssServiceImplTest {
 
     @Test
     void uploadDeletesObjectWhenAttachmentRecordCannotBeSaved() {
-        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile file = multipartFileRejectingGetBytes("notes.txt", "text/plain", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()
             .filename("uploads/cover.png")
             .url("https://bucket.example/uploads/cover.png")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".txt"), eq(3L), eq("text/plain")))
             .thenReturn(uploadResult);
         when(ossClient.getConfigKey()).thenReturn("minio");
         when(mapper.insert(any(SysOss.class))).thenReturn(0);
@@ -343,7 +393,7 @@ class SysOssServiceImplTest {
     @Test
     void uploadDeletesObjectWhenSourceCloseFailsAfterObjectStoreCompletion() {
         byte[] content = {1, 2, 3};
-        MockMultipartFile file = new MockMultipartFile("file", "cover.png", "image/png", content) {
+        MockMultipartFile file = new MockMultipartFile("file", "notes.txt", "text/plain", content) {
             @Override
             public byte[] getBytes() {
                 throw new AssertionError("MultipartFile.getBytes() must not be used for uploads");
@@ -364,7 +414,7 @@ class SysOssServiceImplTest {
             .url("https://bucket.example/uploads/cover.png")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".txt"), eq(3L), eq("text/plain")))
             .thenReturn(uploadResult);
 
         assertThatThrownBy(() -> service.upload(file))
@@ -379,13 +429,13 @@ class SysOssServiceImplTest {
 
     @Test
     void uploadKeepsObjectWhenPostInsertUrlMappingFails() {
-        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile file = multipartFileRejectingGetBytes("notes.txt", "text/plain", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()
             .filename("uploads/cover.png")
             .url("https://bucket.example/uploads/cover.png")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".txt"), eq(3L), eq("text/plain")))
             .thenReturn(uploadResult);
         when(ossClient.getConfigKey()).thenReturn("minio");
         when(mapper.insert(any(SysOss.class))).thenReturn(1);
@@ -402,13 +452,13 @@ class SysOssServiceImplTest {
 
     @Test
     void uploadDeletesObjectWhenMetadataCreationFailsBeforeInsert() {
-        MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile file = multipartFileRejectingGetBytes("notes.txt", "text/plain", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()
             .filename("uploads/cover.png")
             .url("https://bucket.example/uploads/cover.png")
             .build();
         when(ossClientProvider.current()).thenReturn(ossClient);
-        when(ossClient.uploadSuffix(any(InputStream.class), eq(".png"), eq(3L), eq("image/png")))
+        when(ossClient.uploadSuffix(any(InputStream.class), eq(".txt"), eq(3L), eq("text/plain")))
             .thenReturn(uploadResult);
         when(ossClient.getConfigKey()).thenThrow(new IllegalStateException("metadata creation failed"));
 
@@ -499,6 +549,16 @@ class SysOssServiceImplTest {
         SysOss oss = new SysOss();
         oss.setOssId(ossId);
         oss.setExt1(ext1);
+        return oss;
+    }
+
+    private static SysOss mediaOss(Long ossId, String suffix, long size, String contentType, String ext1) {
+        SysOss oss = oss(ossId, ext1);
+        oss.setFileSuffix(suffix);
+        SysOssExt ext = JsonUtils.parseObject(ext1, SysOssExt.class);
+        ext.setFileSize(size);
+        ext.setContentType(contentType);
+        oss.setExt1(JsonUtils.toJsonString(ext));
         return oss;
     }
 
