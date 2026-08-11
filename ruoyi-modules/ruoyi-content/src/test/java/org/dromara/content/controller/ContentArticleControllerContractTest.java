@@ -43,6 +43,7 @@ class ContentArticleControllerContractTest {
 
         assertThat(jsonView).isNotNull();
         assertThat(jsonView.value()).containsExactly(ContentArticleBo.EditView.class);
+        assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly("/edit");
     }
 
     @Test

@@ -29,7 +29,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -149,7 +148,7 @@ public class ContentArticleController extends BaseController {
     @SaCheckPermission("content:article:edit")
     @Log(title = "文章", businessType = BusinessType.UPDATE)
     @RepeatSubmit
-    @PutMapping
+    @PostMapping("/edit")
     // JsonView 控制可绑定字段，Validation Group 控制字段校验。
     public R<Void> edit(@JsonView(ContentArticleBo.EditView.class)
                         @Validated(EditGroup.class) @RequestBody ContentArticleBo bo) {

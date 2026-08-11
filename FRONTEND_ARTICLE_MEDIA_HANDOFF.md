@@ -132,10 +132,39 @@ POST /resource/oss/listByIds
 | 分页列表 | GET | `/content/article/list` |
 | 文章详情 | GET | `/content/article/{articleId}` |
 | 新增文章 | POST | `/content/article` |
-| 修改文章 | PUT | `/content/article` |
+| 修改文章 | POST | `/content/article/edit` |
 | 修改状态 | POST | `/content/article/changeStatus` |
 | 逻辑删除 | POST | `/content/article/delete` |
 | 物理删除 | POST | `/content/article/physicalDelete` |
+
+管理端分页列表使用 Query 参数：
+
+```http
+GET /content/article/list?pageNum=1&pageSize=10&title=新闻&categoryDictCode=208000000000000010&status=1&orderByColumn=createTime&isAsc=desc
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `pageNum` | number | 是 | 当前页，从 1 开始。 |
+| `pageSize` | number | 是 | 每页条数，前端必须主动传入。 |
+| `title` | string | 否 | 标题模糊查询。 |
+| `categoryDictCode` | string | 否 | 分类 `dictCode` 精确查询。 |
+| `status` | `'0' \| '1'` | 否 | `0`=草稿，`1`=已发布。 |
+| `orderByColumn` | string | 否 | 排序字段，例如 `createTime`、`publishTime`、`articleId`。 |
+| `isAsc` | `asc \| desc` | 否 | 排序方向；只有和 `orderByColumn` 同时传入才生效。 |
+
+不传自定义排序时，默认按 `articleId` 倒序。分页响应不是普通 `data` 结构：
+
+```ts
+interface ArticlePageResult {
+  code: number;
+  msg: string;
+  rows: ArticleForm[];
+  total: number;
+}
+```
+
+列表中的每条记录包含 `content`、`attachmentOssIds` 和 `videoOssIds`。列表页可以不展示正文，但前端模型不能假设 `content` 为空。
 
 状态修改参数：
 
@@ -163,6 +192,21 @@ POST /resource/oss/listByIds
 | 公开文章列表 | GET | `/content/article/public/list` |
 | 公开文章详情 | GET | `/content/article/public/{articleId}` |
 | 批量获取文章媒体 URL | POST | `/content/article/public/media` |
+
+公开文章列表同样分页：
+
+```http
+GET /content/article/public/list?pageNum=1&pageSize=10&title=新闻&categoryDictCode=208000000000000010
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `pageNum` | number | 否 | 默认 1。 |
+| `pageSize` | number | 否 | 默认 10，最大 100。 |
+| `title` | string | 否 | 标题模糊查询。 |
+| `categoryDictCode` | string | 否 | 分类 `dictCode` 精确查询。 |
+
+公开列表固定只返回已发布、未删除的文章，并固定按 `articleId` 倒序。前端传入 `status`、`orderByColumn` 或 `isAsc` 都不会改变公开查询结果。响应结构同样使用顶层 `rows` 和 `total`。
 
 请求体可以传一个或多个文章 ID：
 
@@ -233,7 +277,7 @@ POST /resource/oss/listByIds
 2. 根据两个 OSS ID 数组批量获取文件信息并回显。
 3. 用户新增附件时先上传，再加入对应数组。
 4. 用户删除或排序附件时只修改本地数组。
-5. 调用 `PUT /content/article` 提交两个数组的完整最终结果。
+5. 调用 `POST /content/article/edit` 提交两个数组的完整最终结果。
 
 ## 五、鉴权提醒
 
