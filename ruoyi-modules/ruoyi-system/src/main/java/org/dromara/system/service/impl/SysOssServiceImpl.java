@@ -34,6 +34,7 @@ import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.ISysOssService;
 import org.dromara.system.service.support.OssMediaUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
+import org.dromara.system.service.support.OssPublicUrlResolver;
 import org.dromara.system.service.support.OssTemporaryObjectCleaner;
 import org.dromara.system.service.support.OssBusinessDeletionCoordinator;
 import org.dromara.common.tenant.helper.TenantHelper;
@@ -479,16 +480,21 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     /**
-     * 桶类型为 private 的URL 修改为临时URL时长为120s
+     * 将存储 URL 转换为当前请求可使用的 URL。
+     *
+     * <p>私有桶仍生成 120 秒签名 URL，不得修改签名中的 Host；公共本机 MinIO 则只在响应阶段
+     * 使用当前请求 Host，数据库继续保存稳定的内部地址。</p>
      *
      * @param oss OSS对象
-     * @return oss 匹配Url的OSS对象
+     * @return 已匹配当前访问环境的 OSS 对象
      */
     private SysOssVo matchingUrl(SysOssVo oss) {
         OssClient storage = ossClientProvider.byService(oss.getService());
-        // 仅修改桶类型为 private 的URL，临时URL时长为120s
         if (AccessPolicyType.PRIVATE == storage.getAccessPolicy()) {
             oss.setUrl(storage.createPresignedGetUrl(oss.getFileName(), Duration.ofSeconds(120)));
+        } else {
+            oss.setUrl(OssPublicUrlResolver.resolveForCurrentRequest(
+                oss.getUrl(), storage.getEndpoint(), storage.getDomain()));
         }
         return oss;
     }

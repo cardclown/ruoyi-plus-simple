@@ -47,14 +47,10 @@ public class SysOssConfig extends BaseEntity {
      */
     private String prefix;
 
-    /**
-     * 访问站点
-     */
+    /** 后端访问 OSS 的内部站点。 */
     private String endpoint;
 
-    /**
-     * 自定义域名
-     */
+    /** 浏览器访问域名；公共本机 MinIO 留空表示使用请求 Host。 */
     private String domain;
 
     /**

@@ -18,6 +18,7 @@ import org.dromara.system.service.support.OssMediaUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
 import org.dromara.system.service.support.OssTemporaryObjectCleaner;
 import org.dromara.system.service.support.OssBusinessDeletionCoordinator;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -31,6 +32,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -106,6 +110,11 @@ class SysOssServiceImplTest {
             temporaryObjectCleaner, businessDeletionCoordinator);
     }
 
+    @AfterEach
+    void resetRequestContext() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
     @Test
     void selectByIdsUsesOneBatchQueryParsesMetadataAndPreservesRequestOrder() {
         SysOssVo ten = vo(10L, "{\"fileSize\":52428800,\"contentType\":\"image/png\",\"isTemp\":true}");
@@ -153,6 +162,27 @@ class SysOssServiceImplTest {
             .singleElement()
             .extracting(OssDTO::getOssId, OssDTO::getUrl)
             .containsExactly(11L, "https://fresh.example/11");
+    }
+
+    @Test
+    void resolveByIdsReturnsCurrentRequestHostForPublicLoopbackMinio() {
+        SysOssVo active = vo(11L, "{\"isTemp\":false}");
+        active.setService("minio");
+        active.setFileName("uploads/11.png");
+        active.setUrl("http://127.0.0.1:9000/ruoyi/uploads/11.png");
+        when(mapper.selectVoByIds(List.of(11L))).thenReturn(List.of(active));
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(ossClient.getAccessPolicy()).thenReturn(AccessPolicyType.PUBLIC);
+        when(ossClient.getEndpoint()).thenReturn("http://127.0.0.1:9000");
+        when(ossClient.getDomain()).thenReturn("http://127.0.0.1:9000");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setServerName("10.50.3.55");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        assertThat(service.resolveByIds(List.of(11L)))
+            .singleElement()
+            .extracting(OssDTO::getOssId, OssDTO::getUrl)
+            .containsExactly(11L, "http://10.50.3.55:9000/ruoyi/uploads/11.png");
     }
 
     @Test

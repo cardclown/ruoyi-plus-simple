@@ -64,14 +64,14 @@ public class SysOssConfigBo extends BaseEntity {
     private String prefix;
 
     /**
-     * 访问站点
+     * 后端访问 OSS 的内部站点；同机 MinIO 应配置为 127.0.0.1:9000，避免 DHCP 地址变化。
      */
     @NotBlank(message = "访问站点不能为空", groups = {AddGroup.class, EditGroup.class})
     @Size(min = 2, max = 100, message = "endpoint长度必须介于{min}和{max}之间")
     private String endpoint;
 
     /**
-     * 自定义域名
+     * 浏览器访问域名。公共本机 MinIO 留空时按当前请求 Host 动态生成；填写后固定域名优先。
      */
     private String domain;
 

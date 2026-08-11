@@ -244,6 +244,7 @@ GET /content/article/public/list?pageNum=1&pageSize=10&title=新闻&categoryDict
 - 列表页需要展示媒体时，一次传入当前页全部 `articleId`，不要逐篇请求。
 - 前端按响应中的 `articleId` 建立 Map，再匹配文章。
 - 不要在官网调用管理端的 `listByIds`，也不要长期缓存 URL。
+- MinIO URL 会根据本次 API 请求 Host 动态生成，前端不得写死服务器 IP 或自行替换 URL 主机。
 
 ## 三、前端限制
 
