@@ -3,8 +3,8 @@ package org.dromara.content.service.impl;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
-import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.service.support.ContentArticlePublishedQueryService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -45,11 +45,12 @@ class ZhongAnArticlePublicFacadeTest {
     }
 
     @Test
-    void mediaAlwaysUsesZhongAnTenant() {
-        List<ContentArticleMediaVo> expected = List.of(new ContentArticleMediaVo());
-        when(queryService.queryMedia("140872", 100L)).thenReturn(expected);
+    void batchMediaAlwaysUsesZhongAnTenant() {
+        List<Long> articleIds = List.of(100L, 101L);
+        List<ContentArticleMediaGroupVo> expected = List.of(new ContentArticleMediaGroupVo());
+        when(queryService.queryMedia("140872", articleIds)).thenReturn(expected);
 
-        assertThat(facade.queryMedia(100L)).isSameAs(expected);
-        verify(queryService).queryMedia("140872", 100L);
+        assertThat(facade.queryMedia(articleIds)).isSameAs(expected);
+        verify(queryService).queryMedia("140872", articleIds);
     }
 }

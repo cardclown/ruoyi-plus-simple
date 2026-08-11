@@ -4,10 +4,13 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaIgnore;
 import jakarta.validation.constraints.NotNull;
 import org.dromara.common.mybatis.core.page.PageQuery;
+import org.dromara.content.domain.bo.ContentArticleIdsBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
@@ -51,13 +54,14 @@ class ContentArticlePublicControllerContractTest {
     }
 
     @Test
-    void exposesAnonymousArticleScopedMediaResolver() throws Exception {
-        Method method = ContentArticlePublicController.class.getDeclaredMethod("media", Long.class);
+    void exposesAnonymousBatchMediaResolverWithJsonBody() throws Exception {
+        Method method = ContentArticlePublicController.class.getDeclaredMethod(
+            "media", ContentArticleIdsBo.class);
 
-        assertThat(method.getAnnotation(GetMapping.class).value())
-            .containsExactly("/{articleId}/media");
+        assertThat(method.getAnnotation(PostMapping.class).value())
+            .containsExactly("/media");
         assertThat(method.getAnnotation(SaCheckPermission.class)).isNull();
-        assertThat(method.getParameters()[0].getAnnotation(NotNull.class)).isNotNull();
+        assertThat(method.getParameters()[0].getAnnotation(RequestBody.class)).isNotNull();
     }
 
     @Test

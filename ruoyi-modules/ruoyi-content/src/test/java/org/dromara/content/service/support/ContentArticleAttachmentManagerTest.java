@@ -6,6 +6,7 @@ import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleAttachment;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
 import org.dromara.content.domain.vo.ContentArticleMediaVo;
@@ -304,6 +305,34 @@ class ContentArticleAttachmentManagerTest {
         assertThat(ContentArticleMediaVo.class.getDeclaredFields())
             .extracting(java.lang.reflect.Field::getName)
             .doesNotContain("fileName", "service", "ext1", "refType", "refId", "isTemp");
+        verify(ossService).resolveByIds(List.of(10L, 20L));
+    }
+
+    @Test
+    void publicBatchResolverGroupsMultipleArticlesWithOneRelationAndMetadataQuery() {
+        List<Long> requestedArticleIds = List.of(101L, 100L);
+        when(mapper.selectByArticleIds(requestedArticleIds)).thenReturn(List.of(
+            relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
+            relation(2L, 101L, 20L, ContentArticleAttachmentType.VIDEO, 0)));
+        OssDTO image = image(10L);
+        image.setUrl("https://fresh.example/10");
+        OssDTO video = video(20L);
+        video.setUrl("https://fresh.example/20");
+        when(ossService.resolveByIds(List.of(10L, 20L))).thenReturn(List.of(image, video));
+
+        List<ContentArticleMediaGroupVo> result = manager.resolvePublicMedia(requestedArticleIds);
+
+        assertThat(result).extracting(ContentArticleMediaGroupVo::getArticleId)
+            .containsExactly(101L, 100L);
+        assertThat(result.get(0).getMedia()).singleElement().satisfies(media -> {
+            assertThat(media.getOssId()).isEqualTo(20L);
+            assertThat(media.getFileType()).isEqualTo("VIDEO");
+        });
+        assertThat(result.get(1).getMedia()).singleElement().satisfies(media -> {
+            assertThat(media.getOssId()).isEqualTo(10L);
+            assertThat(media.getFileType()).isEqualTo("IMAGE");
+        });
+        verify(mapper).selectByArticleIds(requestedArticleIds);
         verify(ossService).resolveByIds(List.of(10L, 20L));
     }
 

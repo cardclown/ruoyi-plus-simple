@@ -6,8 +6,8 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
-import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -174,10 +174,11 @@ class ContentArticlePublishedQueryServiceTest {
     }
 
     @Test
-    void mediaRejectsAnUnpublishedOrForeignArticleBeforeReadingRelations() {
-        when(mapper.selectPublishedArticleById("140872", 100L)).thenReturn(null);
+    void batchMediaRejectsWhenAnyArticleIsUnpublishedOrForeignBeforeReadingRelations() {
+        when(mapper.selectPublishedArticleIds("140872", List.of(100L, 101L)))
+            .thenReturn(List.of(100L));
 
-        assertThatThrownBy(() -> service.queryMedia("140872", 100L))
+        assertThatThrownBy(() -> service.queryMedia("140872", List.of(100L, 101L)))
             .isInstanceOf(ServiceException.class)
             .hasMessage("文章不存在");
 
@@ -185,16 +186,17 @@ class ContentArticlePublishedQueryServiceTest {
     }
 
     @Test
-    void mediaUsesPublishedArticlePathInsideTheFixedTenantScope() {
-        ContentArticleMediaVo media = new ContentArticleMediaVo();
-        media.setOssId(10L);
-        when(mapper.selectPublishedArticleById("140872", 100L)).thenReturn(article(100L, "正文"));
-        when(attachmentManager.resolvePublicMedia(100L)).thenReturn(List.of(media));
+    void batchMediaUsesOnePublishedCheckInsideTheFixedTenantScope() {
+        List<Long> articleIds = List.of(100L, 101L);
+        ContentArticleMediaGroupVo first = new ContentArticleMediaGroupVo();
+        first.setArticleId(100L);
+        when(mapper.selectPublishedArticleIds("140872", articleIds)).thenReturn(articleIds);
+        when(attachmentManager.resolvePublicMedia(articleIds)).thenReturn(List.of(first));
 
-        assertThat(service.queryMedia("140872", 100L)).containsExactly(media);
+        assertThat(service.queryMedia("140872", articleIds)).containsExactly(first);
         assertThat(tenantSeen.get()).isEqualTo("140872");
-        verify(mapper).selectPublishedArticleById("140872", 100L);
-        verify(attachmentManager).resolvePublicMedia(100L);
+        verify(mapper).selectPublishedArticleIds("140872", articleIds);
+        verify(attachmentManager).resolvePublicMedia(articleIds);
     }
 
     @Test

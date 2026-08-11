@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -26,7 +27,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -74,10 +76,12 @@ class ContentArticleControllerMvcTest {
     }
 
     @Test
-    void physicalDeleteRoutesBindsIdsAndInvokesService() throws Exception {
+    void physicalDeleteAcceptsJsonIdsAndInvokesService() throws Exception {
         permissions.set(List.of("content:article:remove"));
 
-        mockMvc.perform(delete("/content/article/physical/100,101"))
+        mockMvc.perform(post("/content/article/physicalDelete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"articleIds\":[\"100\",\"101\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
 
@@ -85,23 +89,41 @@ class ContentArticleControllerMvcTest {
     }
 
     @Test
-    void physicalDeleteRejectsInvalidIdWithoutInvokingService() throws Exception {
+    void logicalDeleteAcceptsJsonIdsAndInvokesService() throws Exception {
+        permissions.set(List.of("content:article:remove"));
+        when(articleService.deleteWithValidByIds(List.of(100L, 101L), true)).thenReturn(true);
+
+        mockMvc.perform(post("/content/article/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"articleIds\":[\"100\",\"101\"]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+
+        verify(articleService).deleteWithValidByIds(List.of(100L, 101L), true);
+    }
+
+    @Test
+    void physicalDeleteRejectsInvalidJsonIdWithoutInvokingService() throws Exception {
         permissions.set(List.of("content:article:remove"));
 
-        mockMvc.perform(delete("/content/article/physical/not-a-number"))
+        mockMvc.perform(post("/content/article/physicalDelete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"articleIds\":[\"not-a-number\"]}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.msg", containsString("参数[articleIds]要求类型")));
+            .andExpect(jsonPath("$.code").value(400));
 
         verify(articleService, never()).physicalDeleteByIds(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void physicalDeleteEmptyPathDoesNotInvokeService() throws Exception {
+    void physicalDeleteRejectsEmptyJsonArrayWithoutInvokingService() throws Exception {
         permissions.set(List.of("content:article:remove"));
 
-        mockMvc.perform(delete("/content/article/physical/"))
+        mockMvc.perform(post("/content/article/physicalDelete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"articleIds\":[]}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(404));
+            .andExpect(jsonPath("$.msg", containsString("文章ID不能为空")));
 
         verify(articleService, never()).physicalDeleteByIds(org.mockito.ArgumentMatchers.any());
     }
@@ -110,7 +132,9 @@ class ContentArticleControllerMvcTest {
     void physicalDeleteDeniesUserWithoutRemovePermission() throws Exception {
         permissions.set(List.of("content:article:list"));
 
-        mockMvc.perform(delete("/content/article/physical/100"))
+        mockMvc.perform(post("/content/article/physicalDelete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"articleIds\":[\"100\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(403));
 

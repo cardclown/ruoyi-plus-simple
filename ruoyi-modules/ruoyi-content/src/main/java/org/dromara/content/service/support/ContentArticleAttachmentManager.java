@@ -9,6 +9,7 @@ import org.dromara.common.core.oss.TechnicalMediaMetadataPolicy;
 import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticleAttachment;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
 import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
@@ -159,39 +160,72 @@ public class ContentArticleAttachmentManager {
         if (articleId == null) {
             throw new ServiceException("文章ID不能为空");
         }
-        List<ContentArticleAttachment> relations = mapper.selectByArticleIds(List.of(articleId));
+        return resolvePublicMedia(List.of(articleId)).get(0).getMedia();
+    }
+
+    /**
+     * 批量返回多篇文章关联媒体的最新公开元数据。
+     *
+     * <p>附件关系与 OSS 元数据各批量查询一次，并按照请求文章顺序分组返回；不存在元数据或已进入
+     * 删除状态的 OSS 行会被忽略，避免列表页为每篇文章额外发起一次请求。</p>
+     *
+     * @param articleIds 已完成公开可见性校验的文章 ID
+     * @return 按文章分组的媒体解析结果
+     */
+    public List<ContentArticleMediaGroupVo> resolvePublicMedia(Collection<Long> articleIds) {
+        List<Long> ids = normalizeArticleIds(articleIds);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, ContentArticleMediaGroupVo> groups = new LinkedHashMap<>();
+        for (Long articleId : ids) {
+            ContentArticleMediaGroupVo group = new ContentArticleMediaGroupVo();
+            group.setArticleId(articleId);
+            group.setMedia(new ArrayList<>());
+            groups.put(articleId, group);
+        }
+
+        List<ContentArticleAttachment> relations = mapper.selectByArticleIds(ids);
         List<Long> ossIds = relations.stream().map(ContentArticleAttachment::getOssId)
             .filter(java.util.Objects::nonNull).distinct().toList();
         if (ossIds.isEmpty()) {
-            return List.of();
+            return new ArrayList<>(groups.values());
         }
+        Set<Long> requestedOssIds = new HashSet<>(ossIds);
         Map<Long, OssDTO> metadata = ossService.resolveByIds(ossIds).stream()
             .filter(java.util.Objects::nonNull)
-            .filter(dto -> dto.getOssId() != null && ossIds.contains(dto.getOssId()))
+            .filter(dto -> dto.getOssId() != null && requestedOssIds.contains(dto.getOssId()))
             .collect(Collectors.toMap(OssDTO::getOssId, Function.identity(), (left, right) -> left));
-        List<ContentArticleMediaVo> result = new ArrayList<>();
         for (ContentArticleAttachment relation : relations) {
             OssDTO dto = metadata.get(relation.getOssId());
-            if (dto == null) {
+            ContentArticleMediaGroupVo group = groups.get(relation.getArticleId());
+            if (dto == null || group == null) {
                 continue;
             }
-            ContentArticleMediaVo media = new ContentArticleMediaVo();
-            media.setOssId(dto.getOssId());
-            media.setUrl(dto.getUrl());
-            media.setOriginalName(dto.getOriginalName());
-            media.setFileSuffix(dto.getFileSuffix());
-            media.setFileSize(dto.getFileSize());
-            media.setContentType(dto.getContentType());
-            if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
-                media.setFileType("IMAGE");
-            } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
-                media.setFileType("VIDEO");
-            } else {
-                continue;
+            ContentArticleMediaVo media = toPublicMedia(relation, dto);
+            if (media != null) {
+                group.getMedia().add(media);
             }
-            result.add(media);
         }
-        return result;
+        return new ArrayList<>(groups.values());
+    }
+
+    private ContentArticleMediaVo toPublicMedia(ContentArticleAttachment relation, OssDTO dto) {
+        ContentArticleMediaVo media = new ContentArticleMediaVo();
+        media.setOssId(dto.getOssId());
+        media.setUrl(dto.getUrl());
+        media.setOriginalName(dto.getOriginalName());
+        media.setFileSuffix(dto.getFileSuffix());
+        media.setFileSize(dto.getFileSize());
+        media.setContentType(dto.getContentType());
+        if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
+            media.setFileType("IMAGE");
+        } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
+            media.setFileType("VIDEO");
+        } else {
+            return null;
+        }
+        return media;
     }
 
     private <T> void populateMedia(Collection<T> articles, Function<T, Long> idGetter,

@@ -40,6 +40,26 @@ public interface ContentArticleMapper extends BaseMapperPlus<ContentArticle, Con
         @Param("articleId") Long articleId);
 
     /**
+     * 使用 MyBatis-Plus 批量确认指定租户中已发布且未删除的文章。
+     *
+     * <p>公开媒体接口必须先完成该交集校验，不能通过附件关系反推出草稿或其他租户文章。</p>
+     *
+     * @param tenantId 固定官网租户 ID
+     * @param articleIds 待确认的文章 ID
+     * @return 实际公开可见的文章 ID
+     */
+    default List<Long> selectPublishedArticleIds(String tenantId, Collection<Long> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()) {
+            return List.of();
+        }
+        return selectObjs(new LambdaQueryWrapper<ContentArticle>()
+            .select(ContentArticle::getArticleId)
+            .eq(ContentArticle::getTenantId, tenantId)
+            .eq(ContentArticle::getStatus, "1")
+            .in(ContentArticle::getArticleId, articleIds), value -> (Long) value);
+    }
+
+    /**
      * 在数据权限范围内读取单篇文章。
      *
      * @param articleId 文章 ID

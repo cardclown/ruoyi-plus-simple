@@ -13,6 +13,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.system.domain.bo.SysOssBo;
+import org.dromara.system.domain.bo.SysOssIdsBo;
 import org.dromara.system.domain.enums.OssFileType;
 import org.dromara.system.domain.vo.SysOssUploadVo;
 import org.dromara.system.domain.vo.SysOssVo;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -49,15 +49,15 @@ public class SysOssController extends BaseController {
     }
 
     /**
-     * 查询OSS对象基于id串
+     * 根据 JSON 数组批量查询 OSS 文件当前元数据。
      *
-     * @param ossIds OSS对象ID串
+     * @param bo OSS ID 批量请求
+     * @return 与当前租户可见 ID 对应的文件元数据
      */
     @SaCheckPermission("system:oss:query")
-    @GetMapping("/listByIds/{ossIds}")
-    public R<List<SysOssVo>> listByIds(@NotEmpty(message = "主键不能为空")
-                                       @PathVariable Long[] ossIds) {
-        List<SysOssVo> list = ossService.listByIds(Arrays.asList(ossIds));
+    @PostMapping("/listByIds")
+    public R<List<SysOssVo>> listByIds(@Validated @RequestBody SysOssIdsBo bo) {
+        List<SysOssVo> list = ossService.listByIds(bo.getOssIds());
         return R.ok(list);
     }
 

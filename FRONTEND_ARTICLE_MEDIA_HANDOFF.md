@@ -110,13 +110,15 @@ interface OssUploadResult {
 2. 去重后只调用一次：
 
 ```text
-GET /resource/oss/listByIds/{ossIds}
+POST /resource/oss/listByIds
 ```
 
-多个 ID 使用逗号分隔：
+请求体：
 
-```text
-GET /resource/oss/listByIds/101,102,201
+```json
+{
+  "ossIds": ["101", "102", "201"]
+}
 ```
 
 3. 按 `ossId` 匹配返回的文件信息和当前 URL。
@@ -132,8 +134,8 @@ GET /resource/oss/listByIds/101,102,201
 | 新增文章 | POST | `/content/article` |
 | 修改文章 | PUT | `/content/article` |
 | 修改状态 | POST | `/content/article/changeStatus` |
-| 逻辑删除 | DELETE | `/content/article/{articleIds}` |
-| 物理删除 | DELETE | `/content/article/physical/{articleIds}` |
+| 逻辑删除 | POST | `/content/article/delete` |
+| 物理删除 | POST | `/content/article/physicalDelete` |
 
 状态修改参数：
 
@@ -146,15 +148,58 @@ GET /resource/oss/listByIds/101,102,201
 
 普通删除使用逻辑删除接口；回收站中的彻底删除才使用物理删除接口。
 
+两个删除接口都使用相同的批量请求体，单选时数组中只传一个 ID：
+
+```json
+{
+  "articleIds": ["208000000000000001", "208000000000000002"]
+}
+```
+
 ### 5. 官网公开接口
 
 | 功能 | 方法 | 接口 |
 | --- | --- | --- |
 | 公开文章列表 | GET | `/content/article/public/list` |
 | 公开文章详情 | GET | `/content/article/public/{articleId}` |
-| 获取文章媒体 URL | GET | `/content/article/public/{articleId}/media` |
+| 批量获取文章媒体 URL | POST | `/content/article/public/media` |
 
-官网展示图片或视频时，根据文章 ID 调用专用的 `/media` 接口获取当前 URL。不要在官网调用管理端的 `listByIds`，也不要长期缓存 URL。
+请求体可以传一个或多个文章 ID：
+
+```json
+{
+  "articleIds": ["208000000000000001", "208000000000000002"]
+}
+```
+
+响应按照文章分组：
+
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "articleId": "208000000000000001",
+      "media": [
+        {
+          "ossId": "208000000000000101",
+          "url": "https://current-url/...",
+          "originalName": "example.png",
+          "fileSuffix": "png",
+          "fileSize": 102400,
+          "contentType": "image/png",
+          "fileType": "IMAGE"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- 详情页传当前一个 `articleId`。
+- 列表页需要展示媒体时，一次传入当前页全部 `articleId`，不要逐篇请求。
+- 前端按响应中的 `articleId` 建立 Map，再匹配文章。
+- 不要在官网调用管理端的 `listByIds`，也不要长期缓存 URL。
 
 ## 三、前端限制
 

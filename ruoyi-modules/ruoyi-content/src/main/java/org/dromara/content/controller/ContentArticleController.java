@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonView;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
@@ -18,6 +17,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.content.domain.bo.ContentArticleBo;
+import org.dromara.content.domain.bo.ContentArticleIdsBo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.bo.ContentArticleStatusBo;
 import org.dromara.content.domain.vo.ContentArticleDictOptionVo;
@@ -26,7 +26,6 @@ import org.dromara.content.service.IContentArticleService;
 import org.dromara.content.service.support.ContentArticleDictionaryService;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -172,31 +171,31 @@ public class ContentArticleController extends BaseController {
     }
 
     /**
-     * 逻辑删除文章，并对文章 ID 集合进行数据权限和存在性校验。
+     * 根据 JSON 数组批量逻辑删除文章，并校验数据权限和文章存在性。
      *
-     * @param articleIds 文章 ID 集合
+     * @param bo 文章 ID 批量请求
      * @return 删除结果
      */
     @SaCheckPermission("content:article:remove")
     @Log(title = "文章", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{articleIds}")
-    public R<Void> remove(@NotEmpty(message = "文章ID不能为空")
-                          @PathVariable Long[] articleIds) {
-        return toAjax(contentArticleService.deleteWithValidByIds(List.of(articleIds), true));
+    @RepeatSubmit
+    @PostMapping("/delete")
+    public R<Void> remove(@Validated @RequestBody ContentArticleIdsBo bo) {
+        return toAjax(contentArticleService.deleteWithValidByIds(bo.getArticleIds(), true));
     }
 
     /**
      * 物理删除已逻辑删除的文章及其独占媒体。
      *
-     * @param articleIds 文章 ID 集合
+     * @param bo 文章 ID 批量请求
      * @return 删除结果
      */
     @SaCheckPermission("content:article:remove")
     @Log(title = "文章", businessType = BusinessType.CLEAN)
-    @DeleteMapping("/physical/{articleIds}")
-    public R<Void> physicalRemove(@NotEmpty(message = "文章ID不能为空")
-                                  @PathVariable Long[] articleIds) {
-        contentArticleService.physicalDeleteByIds(List.of(articleIds));
+    @RepeatSubmit
+    @PostMapping("/physicalDelete")
+    public R<Void> physicalRemove(@Validated @RequestBody ContentArticleIdsBo bo) {
+        contentArticleService.physicalDeleteByIds(bo.getArticleIds());
         return R.ok();
     }
 }

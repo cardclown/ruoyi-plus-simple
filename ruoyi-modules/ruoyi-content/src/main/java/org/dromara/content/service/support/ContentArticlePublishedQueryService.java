@@ -8,11 +8,13 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
-import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -54,14 +56,22 @@ public class ContentArticlePublishedQueryService {
         });
     }
 
-    public List<ContentArticleMediaVo> queryMedia(String tenantId, Long articleId) {
+    /**
+     * 批量解析公开文章媒体。
+     *
+     * <p>先一次性确认所有文章均已公开，再批量读取关联和 OSS 元数据；任意 ID 不可见时整体拒绝，
+     * 防止调用方借助返回差异探测草稿、已删除或其他租户文章。</p>
+     */
+    public List<ContentArticleMediaGroupVo> queryMedia(String tenantId, Collection<Long> articleIds) {
         validateTenantId(tenantId);
+        List<Long> ids = normalizeArticleIds(articleIds);
         return tenantScope.execute(tenantId, () -> {
-            ContentArticle article = articleMapper.selectPublishedArticleById(tenantId, articleId);
-            if (article == null) {
+            List<Long> publishedIds = articleMapper.selectPublishedArticleIds(tenantId, ids);
+            if (publishedIds == null || publishedIds.size() != ids.size()
+                || !new LinkedHashSet<>(publishedIds).equals(new LinkedHashSet<>(ids))) {
                 throw new ServiceException("文章不存在");
             }
-            return attachmentManager.resolvePublicMedia(articleId);
+            return attachmentManager.resolvePublicMedia(ids);
         });
     }
 
@@ -82,6 +92,18 @@ public class ContentArticlePublishedQueryService {
         if (StringUtils.isBlank(tenantId)) {
             throw new ServiceException("租户ID不能为空");
         }
+    }
+
+    private List<Long> normalizeArticleIds(Collection<Long> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()
+            || articleIds.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new ServiceException("文章ID不能为空");
+        }
+        List<Long> ids = new java.util.ArrayList<>(new LinkedHashSet<>(articleIds));
+        if (ids.size() > PUBLIC_MAX_PAGE_SIZE) {
+            throw new ServiceException("单次最多处理100篇文章");
+        }
+        return ids;
     }
 
     private ContentArticlePublicVo toPublicVo(ContentArticle article) {

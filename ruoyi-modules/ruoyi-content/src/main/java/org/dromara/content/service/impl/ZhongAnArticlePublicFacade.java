@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.vo.ContentArticleMediaGroupVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
-import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.service.IContentArticlePublicFacade;
 import org.dromara.content.service.support.ContentArticlePublishedQueryService;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ public class ZhongAnArticlePublicFacade implements IContentArticlePublicFacade {
     }
 
     @Override
-    public List<ContentArticleMediaVo> queryMedia(Long articleId) {
-        return queryService.queryMedia(ZHONG_AN_TENANT_ID, articleId);
+    public List<ContentArticleMediaGroupVo> queryMedia(List<Long> articleIds) {
+        return queryService.queryMedia(ZHONG_AN_TENANT_ID, articleIds);
     }
 }
