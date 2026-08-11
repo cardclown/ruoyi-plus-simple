@@ -35,6 +35,7 @@ import org.dromara.system.service.ISysOssService;
 import org.dromara.system.service.support.OssMediaUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
 import org.dromara.system.service.support.OssTemporaryObjectCleaner;
+import org.dromara.system.service.support.OssBusinessDeletionCoordinator;
 import org.dromara.common.tenant.helper.TenantHelper;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.cache.annotation.Cacheable;
@@ -74,6 +75,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     private final OssClientProvider ossClientProvider;
     private final OssMediaUploadPolicy mediaUploadPolicy;
     private final OssTemporaryObjectCleaner temporaryObjectCleaner;
+    private final OssBusinessDeletionCoordinator businessDeletionCoordinator;
     private final AtomicLong temporaryCleanupCursor = new AtomicLong();
 
     /**
@@ -86,6 +88,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     @Override
     public TableDataInfo<SysOssVo> queryPageList(SysOssBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<SysOss> lqw = buildQueryWrapper(bo);
+        lqw.and(query -> query.isNull(SysOss::getExt1)
+            .or().notLike(SysOss::getExt1, OssBusinessDeletionCoordinator.PENDING_JSON_MARKER));
         Page<SysOssVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         List<SysOssVo> filterResult = StreamUtils.toList(result.getRecords(), this::matchingUrl);
         result.setRecords(filterResult);
@@ -109,7 +113,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             .collect(Collectors.toMap(SysOssVo::getOssId, Function.identity(), (left, right) -> left));
         for (Long id : ids) {
             SysOssVo vo = voById.get(id);
-            if (ObjectUtil.isNotNull(vo)) {
+            if (ObjectUtil.isNotNull(vo) && !isPendingDeletion(vo.getExt1())) {
                 try {
                     list.add(this.matchingUrl(vo));
                 } catch (Exception ignored) {
@@ -174,8 +178,26 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         List<OssDTO> result = new ArrayList<>();
         for (Long id : ids) {
             SysOssVo vo = voById.get(id);
-            if (ObjectUtil.isNotNull(vo)) {
+            if (ObjectUtil.isNotNull(vo) && !isPendingDeletion(vo.getExt1())) {
                 result.add(toDto(vo));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<OssDTO> resolveByIds(Collection<Long> ossIds) {
+        List<Long> ids = distinctIds(ossIds);
+        if (ids.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Map<Long, SysOssVo> voById = baseMapper.selectVoByIds(ids).stream()
+            .collect(Collectors.toMap(SysOssVo::getOssId, Function.identity(), (left, right) -> left));
+        List<OssDTO> result = new ArrayList<>();
+        for (Long id : ids) {
+            SysOssVo vo = voById.get(id);
+            if (vo != null && !isPendingDeletion(vo.getExt1())) {
+                result.add(toDto(matchingUrl(vo)));
             }
         }
         return result;
@@ -196,6 +218,9 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         }
         for (SysOss oss : ossList) {
             SysOssExt ext = parseExt(oss.getExt1());
+            if (OssBusinessDeletionCoordinator.PENDING.equals(ext.getDeleteStatus())) {
+                throw new ServiceException("附件正在删除，不能绑定");
+            }
             boolean unbound = StringUtils.isBlank(ext.getRefType()) && StringUtils.isBlank(ext.getRefId());
             boolean sameReference = Objects.equals(refType, ext.getRefType())
                 && Objects.equals(refId, ext.getRefId());
@@ -240,7 +265,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     @Cacheable(cacheNames = CacheNames.SYS_OSS, key = "#ossId")
     @Override
     public SysOssVo getById(Long ossId) {
-        return baseMapper.selectVoById(ossId);
+        SysOssVo vo = baseMapper.selectVoById(ossId);
+        return vo != null && !isPendingDeletion(vo.getExt1()) ? vo : null;
     }
 
 
@@ -418,6 +444,11 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     @Override
+    public void scheduleBusinessDeletion(Map<Long, String> ossOwnerRefIds, String refType) {
+        businessDeletionCoordinator.schedule(ossOwnerRefIds, refType);
+    }
+
+    @Override
     public void deleteExpiredTemps(Date cutoff) {
         if (cutoff == null) {
             throw new IllegalArgumentException("cutoff must not be null");
@@ -485,5 +516,9 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
 
     private SysOssExt parseExt(String ext1) {
         return StringUtils.isBlank(ext1) ? new SysOssExt() : JsonUtils.parseObject(ext1, SysOssExt.class);
+    }
+
+    private boolean isPendingDeletion(String ext1) {
+        return OssBusinessDeletionCoordinator.PENDING.equals(parseExt(ext1).getDeleteStatus());
     }
 }

@@ -285,7 +285,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (deletedIds.size() != articleIds.size()) {
             throw new ServiceException("只能物理删除已逻辑删除且有权操作的文章");
         }
-        // 先删除独占 OSS 对象和附件关联，再清理标签并删除文章本体。
+        // 删除附件关联并标记独占 OSS 待删除，再清理标签和文章；对象仅在提交后删除。
         attachmentManager.deletePermanently(articleIds);
         tagMapper.deleteByArticleIds(articleIds);
         int deleted = articleMapper.physicalDeleteByIds(articleIds);

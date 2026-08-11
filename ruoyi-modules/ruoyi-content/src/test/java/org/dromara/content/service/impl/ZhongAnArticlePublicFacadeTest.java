@@ -4,9 +4,12 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.service.support.ContentArticlePublishedQueryService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -39,5 +42,14 @@ class ZhongAnArticlePublicFacadeTest {
 
         assertThat(facade.queryById(100L)).isSameAs(expected);
         verify(queryService).queryById("140872", 100L);
+    }
+
+    @Test
+    void mediaAlwaysUsesZhongAnTenant() {
+        List<ContentArticleMediaVo> expected = List.of(new ContentArticleMediaVo());
+        when(queryService.queryMedia("140872", 100L)).thenReturn(expected);
+
+        assertThat(facade.queryMedia(100L)).isSameAs(expected);
+        verify(queryService).queryMedia("140872", 100L);
     }
 }

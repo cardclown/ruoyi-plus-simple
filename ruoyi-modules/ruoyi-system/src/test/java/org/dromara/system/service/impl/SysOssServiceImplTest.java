@@ -8,6 +8,7 @@ import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.oss.core.OssClient;
 import org.dromara.common.oss.entity.UploadResult;
+import org.dromara.common.oss.enums.AccessPolicyType;
 import org.dromara.system.domain.SysOss;
 import org.dromara.system.domain.SysOssExt;
 import org.dromara.system.domain.enums.OssFileType;
@@ -16,6 +17,7 @@ import org.dromara.system.mapper.SysOssMapper;
 import org.dromara.system.service.support.OssMediaUploadPolicy;
 import org.dromara.system.service.support.OssClientProvider;
 import org.dromara.system.service.support.OssTemporaryObjectCleaner;
+import org.dromara.system.service.support.OssBusinessDeletionCoordinator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -66,6 +68,9 @@ class SysOssServiceImplTest {
     @Mock
     private OssTemporaryObjectCleaner temporaryObjectCleaner;
 
+    @Mock
+    private OssBusinessDeletionCoordinator businessDeletionCoordinator;
+
     @InjectMocks
     private SysOssServiceImpl service;
 
@@ -97,7 +102,8 @@ class SysOssServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new SysOssServiceImpl(mapper, ossClientProvider, new OssMediaUploadPolicy(), temporaryObjectCleaner);
+        service = new SysOssServiceImpl(mapper, ossClientProvider, new OssMediaUploadPolicy(),
+            temporaryObjectCleaner, businessDeletionCoordinator);
     }
 
     @Test
@@ -117,6 +123,36 @@ class SysOssServiceImplTest {
             .extracting(OssDTO::getFileSize, OssDTO::getContentType, OssDTO::getIsTemp)
             .containsExactly(52_428_800L, "image/png", true);
         verify(mapper).selectVoByIds(List.of(11L, 10L));
+    }
+
+    @Test
+    void selectByIdsNeverExposesPendingDeletionRows() {
+        SysOssVo pending = vo(10L, "{\"deleteStatus\":\"PENDING\",\"deleteToken\":\"t\"}");
+        SysOssVo active = vo(11L, "{\"isTemp\":false}");
+        when(mapper.selectVoByIds(List.of(10L, 11L))).thenReturn(List.of(pending, active));
+
+        assertThat(service.selectByIds(List.of(10L, 11L)))
+            .extracting(OssDTO::getOssId)
+            .containsExactly(11L);
+    }
+
+    @Test
+    void resolveByIdsReturnsFreshPrivateUrlAndHidesPendingRows() {
+        SysOssVo active = vo(11L, "{\"isTemp\":false}");
+        active.setService("minio");
+        active.setFileName("uploads/11.png");
+        active.setUrl("https://stored.example/11");
+        SysOssVo pending = vo(10L, "{\"deleteStatus\":\"PENDING\",\"deleteToken\":\"t\"}");
+        when(mapper.selectVoByIds(List.of(10L, 11L))).thenReturn(List.of(active, pending));
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(ossClient.getAccessPolicy()).thenReturn(AccessPolicyType.PRIVATE);
+        when(ossClient.createPresignedGetUrl(eq("uploads/11.png"), any()))
+            .thenReturn("https://fresh.example/11");
+
+        assertThat(service.resolveByIds(List.of(10L, 11L)))
+            .singleElement()
+            .extracting(OssDTO::getOssId, OssDTO::getUrl)
+            .containsExactly(11L, "https://fresh.example/11");
     }
 
     @Test
@@ -155,6 +191,19 @@ class SysOssServiceImplTest {
         assertThatThrownBy(() -> service.bindToBusiness(List.of(10L), "content_article", "100"))
             .isInstanceOf(ServiceException.class)
             .hasMessage("附件已绑定其他业务");
+
+        verify(mapper, never()).updateById(any(SysOss.class));
+    }
+
+    @Test
+    void bindRejectsPendingDeletionAttachment() {
+        when(mapper.selectList(any())).thenReturn(List.of(oss(10L,
+            "{\"refType\":\"content_article\",\"refId\":\"100\",\"isTemp\":false,"
+                + "\"deleteStatus\":\"PENDING\",\"deleteToken\":\"t\"}")));
+
+        assertThatThrownBy(() -> service.bindToBusiness(List.of(10L), "content_article", "100"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("附件正在删除，不能绑定");
 
         verify(mapper, never()).updateById(any(SysOss.class));
     }

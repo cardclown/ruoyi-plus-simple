@@ -9,8 +9,11 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @RequiredArgsConstructor
 @Service
@@ -48,6 +51,17 @@ public class ContentArticlePublishedQueryService {
             ContentArticlePublicVo vo = toPublicVo(article);
             attachmentManager.populate(vo);
             return vo;
+        });
+    }
+
+    public List<ContentArticleMediaVo> queryMedia(String tenantId, Long articleId) {
+        validateTenantId(tenantId);
+        return tenantScope.execute(tenantId, () -> {
+            ContentArticle article = articleMapper.selectPublishedArticleById(tenantId, articleId);
+            if (article == null) {
+                throw new ServiceException("文章不存在");
+            }
+            return attachmentManager.resolvePublicMedia(articleId);
         });
     }
 

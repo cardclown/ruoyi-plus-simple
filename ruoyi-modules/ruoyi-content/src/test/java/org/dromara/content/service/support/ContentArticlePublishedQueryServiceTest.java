@@ -7,6 +7,7 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -170,6 +171,30 @@ class ContentArticlePublishedQueryServiceTest {
         assertThatThrownBy(() -> service.queryById("140872", 100L))
             .isInstanceOf(ServiceException.class)
             .hasMessage("文章不存在");
+    }
+
+    @Test
+    void mediaRejectsAnUnpublishedOrForeignArticleBeforeReadingRelations() {
+        when(mapper.selectPublishedArticleById("140872", 100L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.queryMedia("140872", 100L))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文章不存在");
+
+        verifyNoInteractions(attachmentManager);
+    }
+
+    @Test
+    void mediaUsesPublishedArticlePathInsideTheFixedTenantScope() {
+        ContentArticleMediaVo media = new ContentArticleMediaVo();
+        media.setOssId(10L);
+        when(mapper.selectPublishedArticleById("140872", 100L)).thenReturn(article(100L, "正文"));
+        when(attachmentManager.resolvePublicMedia(100L)).thenReturn(List.of(media));
+
+        assertThat(service.queryMedia("140872", 100L)).containsExactly(media);
+        assertThat(tenantSeen.get()).isEqualTo("140872");
+        verify(mapper).selectPublishedArticleById("140872", 100L);
+        verify(attachmentManager).resolvePublicMedia(100L);
     }
 
     @Test

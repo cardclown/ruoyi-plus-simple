@@ -8,6 +8,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.service.IContentArticlePublicFacade;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.validation.annotation.Validated;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 中安建设官网匿名文章查询接口。
@@ -45,5 +48,14 @@ public class ContentArticlePublicController {
     public R<ContentArticlePublicVo> getInfo(
             @NotNull(message = "文章ID不能为空") @PathVariable Long articleId) {
         return R.ok(articlePublicFacade.queryById(articleId));
+    }
+
+    /**
+     * 解析指定已发布文章当前关联的全部媒体 URL。
+     */
+    @GetMapping("/{articleId}/media")
+    public R<List<ContentArticleMediaVo>> media(
+            @NotNull(message = "文章ID不能为空") @PathVariable Long articleId) {
+        return R.ok(articlePublicFacade.queryMedia(articleId));
     }
 }

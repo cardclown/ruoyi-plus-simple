@@ -8,6 +8,7 @@ import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleAttachment;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
 import org.dromara.content.mapper.ContentArticleMapper;
@@ -29,6 +30,7 @@ import javax.sql.DataSource;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -200,7 +202,7 @@ class ContentArticleAttachmentManagerTest {
         order.verify(ossService).bindToBusiness(List.of(21L), "content_article", "100");
         order.verify(mapper).insertBatch(anyCollection());
         order.verify(mapper).deleteByIds(List.of(2L));
-        order.verify(ossService).deleteByIds(List.of(20L));
+        order.verify(ossService).scheduleBusinessDeletion(Map.of(20L, "100"), "content_article");
     }
 
     @Test
@@ -279,7 +281,34 @@ class ContentArticleAttachmentManagerTest {
     }
 
     @Test
-    void permanentDeleteRemovesObjectsBeforeRelationsAndStopsOnObjectFailure() {
+    void publicResolverIntersectsRelationsAndReturnsOnlySanitizedCurrentMetadata() {
+        when(mapper.selectByArticleIds(List.of(100L))).thenReturn(List.of(
+            relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
+            relation(2L, 100L, 20L, ContentArticleAttachmentType.VIDEO, 0)));
+        OssDTO currentImage = image(10L);
+        currentImage.setUrl("https://fresh.example/10");
+        currentImage.setOriginalName("cover.png");
+        OssDTO unrelated = image(999L);
+        unrelated.setUrl("https://fresh.example/999");
+        when(ossService.resolveByIds(List.of(10L, 20L)))
+            .thenReturn(List.of(unrelated, currentImage));
+
+        List<ContentArticleMediaVo> result = manager.resolvePublicMedia(100L);
+
+        assertThat(result).singleElement().satisfies(media -> {
+            assertThat(media.getOssId()).isEqualTo(10L);
+            assertThat(media.getUrl()).isEqualTo("https://fresh.example/10");
+            assertThat(media.getOriginalName()).isEqualTo("cover.png");
+            assertThat(media.getFileType()).isEqualTo("IMAGE");
+        });
+        assertThat(ContentArticleMediaVo.class.getDeclaredFields())
+            .extracting(java.lang.reflect.Field::getName)
+            .doesNotContain("fileName", "service", "ext1", "refType", "refId", "isTemp");
+        verify(ossService).resolveByIds(List.of(10L, 20L));
+    }
+
+    @Test
+    void permanentDeleteMarksExactOwnersAfterRelationsAreRemoved() {
         List<ContentArticleAttachment> relations = List.of(
             relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
             relation(2L, 101L, 20L, ContentArticleAttachmentType.VIDEO, 0));
@@ -289,15 +318,9 @@ class ContentArticleAttachmentManagerTest {
         manager.deletePermanently(List.of(100L, 101L));
 
         InOrder order = inOrder(ossService, mapper);
-        order.verify(ossService).deleteByIds(List.of(10L, 20L));
         order.verify(mapper).deleteByArticleIds(List.of(100L, 101L));
-
-        when(mapper.selectByArticleIds(List.of(100L))).thenReturn(List.of(relations.get(0)));
-        org.mockito.Mockito.doThrow(new ServiceException("存储删除失败"))
-            .when(ossService).deleteByIds(List.of(10L));
-        assertThatThrownBy(() -> manager.deletePermanently(List.of(100L)))
-            .isInstanceOf(ServiceException.class).hasMessage("存储删除失败");
-        verify(mapper, never()).deleteByArticleIds(List.of(100L));
+        order.verify(ossService).scheduleBusinessDeletion(
+            Map.of(10L, "100", 20L, "101"), "content_article");
     }
 
     @Test

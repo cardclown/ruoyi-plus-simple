@@ -5,6 +5,7 @@ import lombok.Data;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Date;
 
 /**
  * 附件扩展字段对象（存储在 SysOss.ext1 的 JSON 字符串中）
@@ -76,5 +77,14 @@ public class SysOssExt implements Serializable {
      * 文件MD5值（可用于去重或校验）
      */
     private String md5;
+
+    /** 业务删除状态；PENDING 表示仅可由提交后工作器或重试任务处理。 */
+    private String deleteStatus;
+
+    /** 每次待删除状态转换生成的唯一令牌，用于工作器精确复核。 */
+    private String deleteToken;
+
+    /** 进入待删除状态的时间。 */
+    private Date deleteRequestedAt;
 
 }

@@ -4,6 +4,9 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
+
+import java.util.List;
 
 /**
  * 官网匿名文章查询门面，不向调用方暴露租户参数。
@@ -14,4 +17,6 @@ public interface IContentArticlePublicFacade {
         ContentArticleQuery query, PageQuery pageQuery);
 
     ContentArticlePublicVo queryById(Long articleId);
+
+    List<ContentArticleMediaVo> queryMedia(Long articleId);
 }

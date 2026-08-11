@@ -51,6 +51,16 @@ class ContentArticlePublicControllerContractTest {
     }
 
     @Test
+    void exposesAnonymousArticleScopedMediaResolver() throws Exception {
+        Method method = ContentArticlePublicController.class.getDeclaredMethod("media", Long.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+            .containsExactly("/{articleId}/media");
+        assertThat(method.getAnnotation(SaCheckPermission.class)).isNull();
+        assertThat(method.getParameters()[0].getAnnotation(NotNull.class)).isNotNull();
+    }
+
+    @Test
     void existingManagementReadsRemainPermissionProtected() throws Exception {
         Method list = ContentArticleController.class.getDeclaredMethod(
             "list", ContentArticleQuery.class, PageQuery.class);

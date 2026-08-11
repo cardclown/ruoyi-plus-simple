@@ -5,9 +5,12 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.bo.ContentArticleQuery;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.service.IContentArticlePublicFacade;
 import org.dromara.content.service.support.ContentArticlePublishedQueryService;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * 中安建设官网文章门面，固定绑定有效租户 140872。
@@ -29,5 +32,10 @@ public class ZhongAnArticlePublicFacade implements IContentArticlePublicFacade {
     @Override
     public ContentArticlePublicVo queryById(Long articleId) {
         return queryService.queryById(ZHONG_AN_TENANT_ID, articleId);
+    }
+
+    @Override
+    public List<ContentArticleMediaVo> queryMedia(Long articleId) {
+        return queryService.queryMedia(ZHONG_AN_TENANT_ID, articleId);
     }
 }

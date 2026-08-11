@@ -10,6 +10,7 @@ import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticleAttachment;
 import org.dromara.content.domain.vo.ContentArticlePublicVo;
+import org.dromara.content.domain.vo.ContentArticleMediaVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
@@ -106,8 +107,12 @@ public class ContentArticleAttachmentManager {
                 || mapper.deleteByIds(relationIds) != relationIds.size()) {
                 throw new ServiceException("文章附件删除失败");
             }
-            // 置于数据库变更之后：对象删除失败会回滚关联删除。
-            ossService.deleteByIds(removals.stream().map(ContentArticleAttachment::getOssId).toList());
+            // 关联删除和待删除标记同事务提交；对象只会在提交后删除。
+            ossService.scheduleBusinessDeletion(removals.stream().collect(Collectors.toMap(
+                ContentArticleAttachment::getOssId,
+                relation -> relation.getArticleId().toString(),
+                (left, right) -> left,
+                LinkedHashMap::new)), ARTICLE_REF_TYPE);
         }
     }
 
@@ -145,6 +150,48 @@ public class ContentArticleAttachmentManager {
         populateMedia(articles, ContentArticlePublicVo::getArticleId,
             ContentArticlePublicVo::getAttachmentOssIds, ContentArticlePublicVo::setAttachmentOssIds,
             ContentArticlePublicVo::getVideoOssIds, ContentArticlePublicVo::setVideoOssIds);
+    }
+
+    /**
+     * 返回当前文章关联媒体的最新公开元数据；未返回或已进入删除状态的 OSS 行会被忽略。
+     */
+    public List<ContentArticleMediaVo> resolvePublicMedia(Long articleId) {
+        if (articleId == null) {
+            throw new ServiceException("文章ID不能为空");
+        }
+        List<ContentArticleAttachment> relations = mapper.selectByArticleIds(List.of(articleId));
+        List<Long> ossIds = relations.stream().map(ContentArticleAttachment::getOssId)
+            .filter(java.util.Objects::nonNull).distinct().toList();
+        if (ossIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, OssDTO> metadata = ossService.resolveByIds(ossIds).stream()
+            .filter(java.util.Objects::nonNull)
+            .filter(dto -> dto.getOssId() != null && ossIds.contains(dto.getOssId()))
+            .collect(Collectors.toMap(OssDTO::getOssId, Function.identity(), (left, right) -> left));
+        List<ContentArticleMediaVo> result = new ArrayList<>();
+        for (ContentArticleAttachment relation : relations) {
+            OssDTO dto = metadata.get(relation.getOssId());
+            if (dto == null) {
+                continue;
+            }
+            ContentArticleMediaVo media = new ContentArticleMediaVo();
+            media.setOssId(dto.getOssId());
+            media.setUrl(dto.getUrl());
+            media.setOriginalName(dto.getOriginalName());
+            media.setFileSuffix(dto.getFileSuffix());
+            media.setFileSize(dto.getFileSize());
+            media.setContentType(dto.getContentType());
+            if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
+                media.setFileType("IMAGE");
+            } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
+                media.setFileType("VIDEO");
+            } else {
+                continue;
+            }
+            result.add(media);
+        }
+        return result;
     }
 
     private <T> void populateMedia(Collection<T> articles, Function<T, Long> idGetter,
@@ -189,7 +236,7 @@ public class ContentArticleAttachmentManager {
     }
 
     /**
-     * 物理删除文章前，先删除其独占 OSS 对象和记录，再删除关联。
+     * 删除关联并把其独占 OSS 行标为待删除；对象只在外层事务提交后删除。
      */
     @Transactional(rollbackFor = Exception.class)
     public void deletePermanently(Collection<Long> articleIds) {
@@ -200,12 +247,17 @@ public class ContentArticleAttachmentManager {
         List<ContentArticleAttachment> relations = mapper.selectByArticleIds(ids);
         List<Long> ossIds = relations.stream().map(ContentArticleAttachment::getOssId)
             .filter(java.util.Objects::nonNull).distinct().toList();
-        if (!ossIds.isEmpty()) {
-            ossService.deleteByIds(ossIds);
-        }
         int deleted = mapper.deleteByArticleIds(ids);
         if (deleted != relations.size()) {
             throw new ServiceException("文章附件删除失败");
+        }
+        if (!ossIds.isEmpty()) {
+            Map<Long, String> owners = relations.stream()
+                .filter(relation -> relation.getOssId() != null && relation.getArticleId() != null)
+                .collect(Collectors.toMap(ContentArticleAttachment::getOssId,
+                    relation -> relation.getArticleId().toString(), (left, right) -> left,
+                    LinkedHashMap::new));
+            ossService.scheduleBusinessDeletion(owners, ARTICLE_REF_TYPE);
         }
     }
 

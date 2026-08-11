@@ -20,7 +20,7 @@ curl -H "Authorization: Bearer <token>" \
 | 管理列表/详情 | `GET /content/article/list`、`GET /content/article/{articleId}` | `content:article:list`、`content:article:query` |
 | 新增/编辑/改状态 | `POST /content/article`、`PUT /content/article`、`POST /content/article/changeStatus` | `content:article:add`、`content:article:edit` |
 | 逻辑/物理删除 | `DELETE /content/article/{articleIds}`、`DELETE /content/article/physical/{articleIds}` | `content:article:remove` |
-| 上传/查 URL/下载 | `POST /resource/oss/upload`、`GET /resource/oss/listByIds/{ossIds}`、`GET /resource/oss/download/{ossId}` | `system:oss:upload`、`query`、`download` |
+| 管理端上传/查 URL/下载 | `POST /resource/oss/upload`、`GET /resource/oss/listByIds/{ossIds}`、`GET /resource/oss/download/{ossId}` | `system:oss:upload`、`query`、`download` |
 
 ## 媒体上传与回显
 
@@ -40,13 +40,36 @@ curl -X POST 'https://<host>/resource/oss/upload' \
 - 视频：最多 5 个/篇，单个不超过 2 GB；仅 `mp4`、`mov`、`avi`、`webm`、`mkv`、`wmv`、`flv`，同样校验扩展名、MIME、文件签名。
 - 超量、重复 ID、同一 ID 同时作图片和视频、类型不匹配、附件不存在/已绑定其他文章都会被后端拒绝；失败应展示后端 `msg`。上传组件设置进度回调和足够长的超时，不要把 `Content-Type` 手动写成无 boundary 的 multipart 值。
 
-文章接口只持久化 `attachmentOssIds` 和 `videoOssIds`，返回也只有这些 ID 数组。需要展示时按当前 URL 查询：`GET /resource/oss/listByIds/{ossIds}`（多个 ID 逗号分隔），用返回 `data[].ossId` 映射 `data[].url`；URL 会刷新，不要持久化 URL。需要下载时请求 `GET /resource/oss/download/{ossId}`。
+文章接口只持久化 `attachmentOssIds` 和 `videoOssIds`，管理端和匿名文章列表/详情返回也只有这些 ID 数组，URL 不应持久化。
+
+- 已登录管理端需要展示或下载时，继续使用有 `system:oss:query` / `system:oss:download` 权限的 `GET /resource/oss/listByIds/{ossIds}` 与 `GET /resource/oss/download/{ossId}`。
+- 匿名官网不得调用通用 OSS 查询。统一请求 `GET /content/article/public/{articleId}/media`；该接口无需登录，只在固定租户内接受已发布、未删除的文章，并且只返回当前仍与该文章有关联的 OSS 元数据。草稿、已删除、其他租户或不存在的文章统一返回“文章不存在”，任意 OSS ID 不能作为请求参数。
+
+匿名媒体解析响应为 `{ code, msg, data }`，`data` 是文章全部图片和视频的展示顺序列表。每项确切字段为 `ossId`、`url`、`originalName`、`fileSuffix`、`fileSize`、`contentType`、`fileType`；`fileType` 为 `IMAGE` 或 `VIDEO`。响应不含对象存储内部键、服务商、扩展 JSON 或业务绑定字段。每次展示都应重新解析以获得当前 URL：
+
+```json
+{
+  "code": 200,
+  "msg": "操作成功",
+  "data": [
+    {
+      "ossId": "208...",
+      "url": "https://<current-url>/...",
+      "originalName": "cover.png",
+      "fileSuffix": ".png",
+      "fileSize": 123456,
+      "contentType": "image/png",
+      "fileType": "IMAGE"
+    }
+  ]
+}
+```
 
 ## 文章接口
 
 管理端：`GET /content/article/list?pageNum=1&pageSize=10&title=&categoryDictCode=&status=`，详情为 `GET /content/article/{articleId}`。列表和详情均包含 `content`；即使列表 UI 不渲染正文，响应不会刻意置空。
 
-匿名官网：`GET /content/article/public/list?pageNum=1&pageSize=10&title=&categoryDictCode=` 与 `GET /content/article/public/{articleId}`，仅返回已发布文章；传入的 `status` 不参与公开列表过滤。公开接口不需鉴权。
+匿名官网：`GET /content/article/public/list?pageNum=1&pageSize=10&title=&categoryDictCode=`、`GET /content/article/public/{articleId}` 与 `GET /content/article/public/{articleId}/media`，仅返回已发布文章或其关联媒体；传入的 `status` 不参与公开列表过滤。公开接口不需鉴权。
 
 新增 `POST /content/article`、修改 `PUT /content/article`；修改额外必传 `articleId`。`title`（≤200）、`content`、`categoryDictCode`、`status`（`"0"` 草稿/`"1"` 发布）必填；`summary` ≤500。最终媒体 JSON 契约如下：
 
@@ -72,8 +95,8 @@ curl -X POST 'https://<host>/resource/oss/upload' \
 {"articleId":"208...","status":"1"}
 ```
 
-删除 `DELETE /content/article/{articleIds}`（多个 ID 逗号分隔）仅逻辑删除，媒体不会随之物理删除。清理已逻辑删除的文章才调用 `DELETE /content/article/physical/{articleIds}`：后端会删除该文章独占的 OSS 对象、附件关联、标签关联和文章记录；未逻辑删除或无数据权限会失败。
+删除 `DELETE /content/article/{articleIds}`（多个 ID 逗号分隔）仅逻辑删除，媒体不会随之物理删除。清理已逻辑删除的文章才调用 `DELETE /content/article/physical/{articleIds}`：事务内会删除附件关联、标签关联和文章记录，并把该文章精确拥有的 OSS 元数据标为待删除；只有业务事务提交后才删除对象存储文件和 `sys_oss` 记录。若对象存储暂时失败，文章删除仍已提交，待删除媒体不会再被绑定或查询，后台会分批重试；事务回滚则不会删除对象。未逻辑删除或无数据权限仍会失败。
 
 ## 部署提示
 
-视频上传的反向代理须允许至少 2 GB 的单文件及请求余量，并避免大请求整包缓冲；仓库 Docker Nginx 已设置 `client_max_body_size 2200m`、`proxy_read_timeout 86400s`、`proxy_send_timeout 86400s` 和 `proxy_request_buffering off`。非 Docker/生产 Nginx 应对齐这些关键配置；前端上传超时也应与之匹配。
+视频上传的反向代理和应用服务器须允许至少 2 GB 的单文件及请求余量，并避免大请求整包缓冲；仓库 Undertow、Spring multipart 和 Docker Nginx 的请求上限均对齐为 `2200 MB`（单文件仍为 `2 GB`），Nginx 另设置 `proxy_read_timeout 86400s`、`proxy_send_timeout 86400s` 和 `proxy_request_buffering off`。非 Docker/生产代理应对齐这些关键配置；前端上传超时也应与之匹配。
