@@ -9,6 +9,7 @@ import org.dromara.common.core.oss.TechnicalMediaMetadataPolicy;
 import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticleAttachment;
+import org.dromara.content.domain.vo.ContentArticlePublicVo;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
@@ -27,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -122,37 +124,65 @@ public class ContentArticleAttachmentManager {
      * 使用一次关联查询回显一批文章媒体。
      */
     public void populate(Collection<ContentArticleVo> articles) {
+        populateMedia(articles, ContentArticleVo::getArticleId,
+            ContentArticleVo::getAttachmentOssIds, ContentArticleVo::setAttachmentOssIds,
+            ContentArticleVo::getVideoOssIds, ContentArticleVo::setVideoOssIds);
+    }
+
+    /**
+     * 回显单篇公开文章媒体。
+     */
+    public void populate(ContentArticlePublicVo article) {
+        if (article != null) {
+            populatePublic(List.of(article));
+        }
+    }
+
+    /**
+     * 使用一次关联查询回显一批公开文章媒体。
+     */
+    public void populatePublic(Collection<ContentArticlePublicVo> articles) {
+        populateMedia(articles, ContentArticlePublicVo::getArticleId,
+            ContentArticlePublicVo::getAttachmentOssIds, ContentArticlePublicVo::setAttachmentOssIds,
+            ContentArticlePublicVo::getVideoOssIds, ContentArticlePublicVo::setVideoOssIds);
+    }
+
+    private <T> void populateMedia(Collection<T> articles, Function<T, Long> idGetter,
+                                   Function<T, List<Long>> imageGetter,
+                                   BiConsumer<T, List<Long>> imageSetter,
+                                   Function<T, List<Long>> videoGetter,
+                                   BiConsumer<T, List<Long>> videoSetter) {
         if (articles == null || articles.isEmpty()) {
             return;
         }
-        List<ContentArticleVo> present = articles.stream().filter(java.util.Objects::nonNull).toList();
+        List<T> present = articles.stream().filter(java.util.Objects::nonNull).toList();
         present.forEach(article -> {
-            article.setAttachmentOssIds(new ArrayList<>());
-            article.setVideoOssIds(new ArrayList<>());
+            imageSetter.accept(article, new ArrayList<>());
+            videoSetter.accept(article, new ArrayList<>());
         });
-        List<Long> articleIds = present.stream().map(ContentArticleVo::getArticleId)
+        List<Long> articleIds = present.stream().map(idGetter)
             .filter(java.util.Objects::nonNull).distinct().toList();
         if (articleIds.isEmpty()) {
             return;
         }
-        Map<Long, List<ContentArticleVo>> articlesById = present.stream()
-            .filter(article -> article.getArticleId() != null)
-            .collect(Collectors.groupingBy(ContentArticleVo::getArticleId));
+        Map<Long, List<T>> articlesById = present.stream()
+            .filter(article -> idGetter.apply(article) != null)
+            .collect(Collectors.groupingBy(idGetter));
         List<ContentArticleAttachment> relations = mapper.selectByArticleIds(articleIds).stream()
             .sorted(Comparator.comparing(ContentArticleAttachment::getArticleId)
                 .thenComparing(ContentArticleAttachment::getAttachmentType)
                 .thenComparing(ContentArticleAttachment::getSortNum))
             .toList();
         for (ContentArticleAttachment relation : relations) {
-            List<ContentArticleVo> matchingArticles = articlesById.get(relation.getArticleId());
+            List<T> matchingArticles = articlesById.get(relation.getArticleId());
             if (matchingArticles == null) {
                 continue;
             }
-            for (ContentArticleVo article : matchingArticles) {
+            for (T article : matchingArticles) {
                 if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
-                    article.getAttachmentOssIds().add(relation.getOssId());
+                    imageGetter.apply(article).add(relation.getOssId());
                 } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
-                    article.getVideoOssIds().add(relation.getOssId());
+                    videoGetter.apply(article).add(relation.getOssId());
                 }
             }
         }

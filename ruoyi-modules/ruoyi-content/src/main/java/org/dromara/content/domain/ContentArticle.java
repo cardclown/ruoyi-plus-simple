@@ -49,10 +49,6 @@ public class ContentArticle extends TenantEntity {
     @TableField(value = "tag_ids", typeHandler = LongListTypeHandler.class, updateStrategy = FieldStrategy.ALWAYS)
     private List<Long> tagIds;
 
-    /** 封面OSS附件ID */
-    @TableField(updateStrategy = FieldStrategy.ALWAYS)
-    private Long coverOssId;
-
     /** 发布状态（0草稿 1已发布） */
     private String status;
 

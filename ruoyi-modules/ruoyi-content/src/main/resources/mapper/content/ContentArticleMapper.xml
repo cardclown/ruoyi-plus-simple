@@ -12,7 +12,6 @@
         <result property="categoryDictCode" column="category_dict_code"/>
         <result property="tagIds" column="tag_ids"
                 typeHandler="org.dromara.content.mybatis.LongListTypeHandler"/>
-        <result property="coverOssId" column="cover_oss_id"/>
         <result property="publishTime" column="publish_time"/>
     </resultMap>
 
@@ -20,9 +19,9 @@
         select article_id,
                title,
                summary,
+               content,
                category_dict_code,
                tag_ids,
-               cover_oss_id,
                publish_time
         from content_article
         where tenant_id = #{tenantId}
@@ -44,7 +43,6 @@
                content,
                category_dict_code,
                tag_ids,
-               cover_oss_id,
                publish_time
         from content_article
         where tenant_id = #{tenantId}

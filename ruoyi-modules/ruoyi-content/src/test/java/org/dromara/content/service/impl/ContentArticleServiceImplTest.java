@@ -1,12 +1,18 @@
 package org.dromara.content.service.impl;
 
 import org.dromara.common.core.exception.ServiceException;
-import org.dromara.common.core.service.OssService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.dromara.common.mybatis.core.page.PageQuery;
+import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleTag;
 import org.dromara.content.domain.bo.ContentArticleBo;
+import org.dromara.content.domain.bo.ContentArticleQuery;
+import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.dromara.content.mapper.ContentArticleTagMapper;
+import org.dromara.content.service.support.ContentArticleAttachmentManager;
 import org.dromara.content.service.support.ContentArticleDictionaryService;
 import org.dromara.content.service.support.ContentArticleHtmlSanitizer;
 import org.dromara.content.service.support.ContentArticleOperationContext;
@@ -15,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
@@ -28,6 +35,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -39,7 +49,7 @@ class ContentArticleServiceImplTest {
     private final ContentArticleMapper articleMapper = mock(ContentArticleMapper.class);
     private final ContentArticleTagMapper tagMapper = mock(ContentArticleTagMapper.class);
     private final ContentArticleDictionaryService dictionaryService = mock(ContentArticleDictionaryService.class);
-    private final OssService ossService = mock(OssService.class);
+    private final ContentArticleAttachmentManager attachmentManager = mock(ContentArticleAttachmentManager.class);
     private final ContentArticleOperationContext operationContext = mock(ContentArticleOperationContext.class);
     private ContentArticleServiceImpl service;
 
@@ -51,16 +61,83 @@ class ContentArticleServiceImplTest {
             articleMapper,
             tagMapper,
             dictionaryService,
-            ossService,
             new ContentArticleHtmlSanitizer(),
             new ContentArticlePublishPolicy(),
-            operationContext
+            operationContext,
+            attachmentManager
         );
+    }
+
+    @Test
+    void detailReturnsPopulatedMediaLists() {
+        ContentArticle article = persistedArticle();
+        article.setContent("完整正文");
+        when(articleMapper.selectArticleById(100L)).thenReturn(article);
+        doAnswer(invocation -> {
+            ContentArticleVo vo = invocation.getArgument(0);
+            vo.setAttachmentOssIds(List.of(10L));
+            vo.setVideoOssIds(List.of(20L));
+            return null;
+        }).when(attachmentManager).populate(any(ContentArticleVo.class));
+
+        ContentArticleVo result = service.queryById(100L);
+
+        assertThat(result.getContent()).isEqualTo("完整正文");
+        assertThat(result.getAttachmentOssIds()).containsExactly(10L);
+        assertThat(result.getVideoOssIds()).containsExactly(20L);
+        verify(attachmentManager).populate(result);
+    }
+
+    @Test
+    void pagePopulatesAllMediaWithOneBatchCall() {
+        ContentArticleVo first = articleVo(100L, "正文一");
+        ContentArticleVo second = articleVo(101L, "正文二");
+        Page<ContentArticleVo> page = new Page<>(1, 10);
+        page.setTotal(2);
+        page.setRecords(List.of(first, second));
+        when(articleMapper.selectArticlePage(any(), any())).thenReturn(page);
+        doAnswer(invocation -> {
+            Collection<ContentArticleVo> records = invocation.getArgument(0);
+            records.forEach(vo -> vo.setAttachmentOssIds(List.of(vo.getArticleId() + 1_000L)));
+            return null;
+        }).when(attachmentManager).populate(
+            org.mockito.ArgumentMatchers.<Collection<ContentArticleVo>>any());
+
+        TableDataInfo<ContentArticleVo> result = service.queryPageList(
+            new ContentArticleQuery(), new PageQuery(10, 1));
+
+        assertThat(result.getRows())
+            .extracting(ContentArticleVo::getContent)
+            .containsExactly("正文一", "正文二");
+        assertThat(result.getRows())
+            .extracting(ContentArticleVo::getAttachmentOssIds)
+            .containsExactly(List.of(1_100L), List.of(1_101L));
+        verify(attachmentManager).populate(page.getRecords());
+    }
+
+    @Test
+    void nonPagedListSelectsContentAndPopulatesOneBatch() {
+        List<ContentArticleVo> records = List.of(articleVo(100L, "完整正文"));
+        when(articleMapper.selectArticleList(any())).thenReturn(records);
+
+        List<ContentArticleVo> result = service.queryList(new ContentArticleQuery());
+
+        assertThat(result).singleElement()
+            .extracting(ContentArticleVo::getContent)
+            .isEqualTo("完整正文");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<ContentArticle>> wrapperCaptor =
+            ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(articleMapper).selectArticleList(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getSqlSelect()).contains("content");
+        verify(attachmentManager).populate(records);
     }
 
     @Test
     void insertsArticleAndTagRelationsTogether() {
         ContentArticleBo bo = articleBo();
+        bo.setAttachmentOssIds(List.of(10L));
+        bo.setVideoOssIds(List.of(20L));
         bo.setContent("<p onclick=\"bad()\">正文</p>");
         bo.setTagIds(List.of(22L, 21L, 22L));
         when(dictionaryService.validateAndNormalize(11L, bo.getTagIds())).thenReturn(List.of(22L, 21L));
@@ -84,6 +161,10 @@ class ContentArticleServiceImplTest {
         assertThat(relationsCaptor.getValue())
             .extracting(ContentArticleTag::getArticleId, ContentArticleTag::getTagDictCode)
             .containsExactly(tuple(100L, 22L), tuple(100L, 21L));
+
+        InOrder order = inOrder(articleMapper, attachmentManager);
+        order.verify(articleMapper).insert(any(ContentArticle.class));
+        order.verify(attachmentManager).replace(100L, List.of(10L), List.of(20L));
     }
 
     @Test
@@ -127,6 +208,8 @@ class ContentArticleServiceImplTest {
         ContentArticleBo bo = articleBo();
         bo.setArticleId(100L);
         bo.setTagIds(null);
+        bo.setAttachmentOssIds(List.of(10L));
+        bo.setVideoOssIds(List.of(20L));
         when(articleMapper.selectArticleById(100L)).thenReturn(persisted);
         when(dictionaryService.validateAndNormalize(11L, null)).thenReturn(List.of());
         when(articleMapper.updateArticleById(any(ContentArticle.class))).thenReturn(1);
@@ -138,6 +221,9 @@ class ContentArticleServiceImplTest {
         assertThat(updateCaptor.getValue().getTagIds()).isEmpty();
         verify(tagMapper).deleteByArticleId(100L);
         verify(tagMapper, never()).insertBatch(anyList());
+        InOrder order = inOrder(articleMapper, attachmentManager);
+        order.verify(articleMapper).updateArticleById(any(ContentArticle.class));
+        order.verify(attachmentManager).replace(100L, List.of(10L), List.of(20L));
     }
 
     @Test
@@ -286,6 +372,7 @@ class ContentArticleServiceImplTest {
         assertThat(service.deleteWithValidByIds(List.of(100L), true)).isTrue();
 
         verify(tagMapper, never()).deleteByArticleIds(any());
+        verify(attachmentManager, never()).deletePermanently(any());
     }
 
     @Test
@@ -305,8 +392,24 @@ class ContentArticleServiceImplTest {
 
         service.physicalDeleteByIds(List.of(100L));
 
-        verify(tagMapper).deleteByArticleIds(List.of(100L));
-        verify(articleMapper).physicalDeleteByIds(List.of(100L));
+        InOrder order = inOrder(attachmentManager, tagMapper, articleMapper);
+        order.verify(attachmentManager).deletePermanently(List.of(100L));
+        order.verify(tagMapper).deleteByArticleIds(List.of(100L));
+        order.verify(articleMapper).physicalDeleteByIds(List.of(100L));
+    }
+
+    @Test
+    void physicalDeleteStopsBeforeTagsAndArticlesWhenAttachmentDeletionFails() {
+        when(articleMapper.selectDeletedArticleIds(List.of(100L))).thenReturn(List.of(100L));
+        doThrow(new ServiceException("存储删除失败"))
+            .when(attachmentManager).deletePermanently(List.of(100L));
+
+        assertThatThrownBy(() -> service.physicalDeleteByIds(List.of(100L)))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("存储删除失败");
+
+        verify(tagMapper, never()).deleteByArticleIds(any());
+        verify(articleMapper, never()).physicalDeleteByIds(any());
     }
 
     @Test
@@ -361,6 +464,13 @@ class ContentArticleServiceImplTest {
         article.setStatus("0");
         article.setTagIds(List.of(21L));
         return article;
+    }
+
+    private static ContentArticleVo articleVo(Long articleId, String content) {
+        ContentArticleVo vo = new ContentArticleVo();
+        vo.setArticleId(articleId);
+        vo.setContent(content);
+        return vo;
     }
 
     private static org.assertj.core.groups.Tuple tuple(Object... values) {

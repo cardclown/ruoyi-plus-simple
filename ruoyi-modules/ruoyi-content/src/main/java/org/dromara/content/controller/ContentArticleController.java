@@ -184,4 +184,19 @@ public class ContentArticleController extends BaseController {
                           @PathVariable Long[] articleIds) {
         return toAjax(contentArticleService.deleteWithValidByIds(List.of(articleIds), true));
     }
+
+    /**
+     * 物理删除已逻辑删除的文章及其独占媒体。
+     *
+     * @param articleIds 文章 ID 集合
+     * @return 删除结果
+     */
+    @SaCheckPermission("content:article:remove")
+    @Log(title = "文章", businessType = BusinessType.CLEAN)
+    @DeleteMapping("/physical/{articleIds}")
+    public R<Void> physicalRemove(@NotEmpty(message = "文章ID不能为空")
+                                  @PathVariable Long[] articleIds) {
+        contentArticleService.physicalDeleteByIds(List.of(articleIds));
+        return R.ok();
+    }
 }

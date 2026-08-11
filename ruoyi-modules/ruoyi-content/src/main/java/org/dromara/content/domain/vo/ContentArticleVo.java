@@ -50,10 +50,6 @@ public class ContentArticleVo implements Serializable {
     /** 标签字典编码集合，用于前端回显，不直接作为 Excel 列导出。 */
     private List<Long> tagIds;
 
-    /** 封面 OSS 附件 ID，供前端展示并导出为 Excel 列。 */
-    @ExcelProperty(value = "封面OSS附件ID")
-    private Long coverOssId;
-
     /** 文章图片 OSS 附件 ID 集合，按展示顺序排列。 */
     private List<Long> attachmentOssIds;
 

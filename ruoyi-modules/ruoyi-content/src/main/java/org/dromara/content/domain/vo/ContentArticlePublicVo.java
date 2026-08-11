@@ -25,7 +25,7 @@ public class ContentArticlePublicVo implements Serializable {
     /** 文章简介。 */
     private String summary;
 
-    /** 文章正文；列表查询不加载该字段。 */
+    /** 文章正文。 */
     private String content;
 
     /** 分类字典编码。 */
@@ -34,8 +34,11 @@ public class ContentArticlePublicVo implements Serializable {
     /** 标签字典编码集合。 */
     private List<Long> tagIds;
 
-    /** 封面 OSS 附件 ID。 */
-    private Long coverOssId;
+    /** 文章图片 OSS 附件 ID 集合，按展示顺序排列。 */
+    private List<Long> attachmentOssIds;
+
+    /** 文章视频 OSS 附件 ID 集合，按展示顺序排列。 */
+    private List<Long> videoOssIds;
 
     /** 发布时间。 */
     private Date publishTime;

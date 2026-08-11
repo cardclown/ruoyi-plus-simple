@@ -1,10 +1,12 @@
 package org.dromara.content.domain.vo;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.beans.Introspector;
-import java.util.Arrays;
+import java.util.List;
+import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,11 +14,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ContentArticlePublicVoContractTest {
 
     @Test
-    void exposesOnlyPublicArticleFields() throws Exception {
-        assertThat(Arrays.stream(Introspector.getBeanInfo(ContentArticlePublicVo.class)
-                .getPropertyDescriptors())
-            .map(descriptor -> descriptor.getName())
-            .filter(name -> !"class".equals(name)))
+    void serializesOnlyPublicArticleFieldsAndMediaLists() {
+        ContentArticlePublicVo vo = new ContentArticlePublicVo();
+        vo.setArticleId(100L);
+        vo.setAttachmentOssIds(List.of(10L));
+        vo.setVideoOssIds(List.of(20L));
+
+        JsonNode json = new ObjectMapper().valueToTree(vo);
+
+        assertThat(StreamSupport.stream(
+                ((Iterable<String>) () -> json.fieldNames()).spliterator(), false))
             .containsExactlyInAnyOrder(
                 "articleId",
                 "title",
@@ -24,8 +31,12 @@ class ContentArticlePublicVoContractTest {
                 "content",
                 "categoryDictCode",
                 "tagIds",
-                "coverOssId",
+                "attachmentOssIds",
+                "videoOssIds",
                 "publishTime"
             );
+        assertThat(json.get("attachmentOssIds").get(0).asLong()).isEqualTo(10L);
+        assertThat(json.get("videoOssIds").get(0).asLong()).isEqualTo(20L);
+        assertThat(json.has("coverOssId")).isFalse();
     }
 }

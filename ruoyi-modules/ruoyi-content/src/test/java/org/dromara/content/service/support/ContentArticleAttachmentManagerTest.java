@@ -7,6 +7,7 @@ import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleAttachment;
 import org.dromara.content.domain.vo.ContentArticleVo;
+import org.dromara.content.domain.vo.ContentArticlePublicVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
 import org.dromara.content.mapper.ContentArticleMapper;
@@ -260,6 +261,24 @@ class ContentArticleAttachmentManagerTest {
     }
 
     @Test
+    void populatesPublicPageWithOneRelationQuery() {
+        ContentArticlePublicVo first = publicArticleVo(100L);
+        ContentArticlePublicVo second = publicArticleVo(101L);
+        when(mapper.selectByArticleIds(List.of(100L, 101L))).thenReturn(List.of(
+            relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
+            relation(2L, 100L, 20L, ContentArticleAttachmentType.VIDEO, 0),
+            relation(3L, 101L, 11L, ContentArticleAttachmentType.IMAGE, 0)));
+
+        manager.populatePublic(List.of(first, second));
+
+        assertThat(first.getAttachmentOssIds()).containsExactly(10L);
+        assertThat(first.getVideoOssIds()).containsExactly(20L);
+        assertThat(second.getAttachmentOssIds()).containsExactly(11L);
+        assertThat(second.getVideoOssIds()).isEmpty();
+        verify(mapper).selectByArticleIds(List.of(100L, 101L));
+    }
+
+    @Test
     void permanentDeleteRemovesObjectsBeforeRelationsAndStopsOnObjectFailure() {
         List<ContentArticleAttachment> relations = List.of(
             relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
@@ -405,6 +424,12 @@ class ContentArticleAttachmentManagerTest {
 
     private static ContentArticleVo articleVo(Long articleId) {
         ContentArticleVo vo = new ContentArticleVo();
+        vo.setArticleId(articleId);
+        return vo;
+    }
+
+    private static ContentArticlePublicVo publicArticleVo(Long articleId) {
+        ContentArticlePublicVo vo = new ContentArticlePublicVo();
         vo.setArticleId(articleId);
         return vo;
     }

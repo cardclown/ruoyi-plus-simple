@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Tag("dev")
 class ContentArticleRequestModelContractTest {
@@ -46,6 +47,38 @@ class ContentArticleRequestModelContractTest {
 
         assertThat(bo.getArticleId()).isEqualTo(999L);
         assertThat(bo.getTitle()).isEqualTo("标题");
+    }
+
+    @Test
+    void addAndEditViewsBindMediaLists() throws Exception {
+        String json = """
+            {"articleId":999,"title":"标题","content":"<p>正文</p>","categoryDictCode":11,
+             "attachmentOssIds":[10,11],"videoOssIds":[20],"status":"0"}
+            """;
+
+        ContentArticleBo add = objectMapper.readerWithView(ContentArticleBo.AddView.class)
+            .forType(ContentArticleBo.class).readValue(json);
+        ContentArticleBo edit = objectMapper.readerWithView(ContentArticleBo.EditView.class)
+            .forType(ContentArticleBo.class).readValue(json);
+
+        assertThat(add.getArticleId()).isNull();
+        assertThat(edit.getArticleId()).isEqualTo(999L);
+        assertThat(add.getAttachmentOssIds()).containsExactly(10L, 11L);
+        assertThat(add.getVideoOssIds()).containsExactly(20L);
+        assertThat(edit.getAttachmentOssIds()).containsExactly(10L, 11L);
+        assertThat(edit.getVideoOssIds()).containsExactly(20L);
+    }
+
+    @Test
+    void rejectsRemovedLegacyCoverField() {
+        String json = """
+            {"title":"标题","content":"<p>正文</p>","categoryDictCode":11,
+             "coverOssId":99,"status":"0"}
+            """;
+
+        assertThatThrownBy(() -> objectMapper.readerWithView(ContentArticleBo.AddView.class)
+            .forType(ContentArticleBo.class).readValue(json))
+            .hasMessageContaining("coverOssId");
     }
 
     @Test

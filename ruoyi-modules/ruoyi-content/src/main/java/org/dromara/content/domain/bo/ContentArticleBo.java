@@ -62,9 +62,17 @@ public class ContentArticleBo {
     @Size(max = 10, message = "文章标签最多选择{max}个", groups = {AddGroup.class, EditGroup.class})
     private List<@NotNull(message = "文章标签ID不能为空") Long> tagIds;
 
-    /** 封面 OSS 文件 ID，后台校验文件存在且属于当前租户。 */
+    /** 文章图片 OSS 附件 ID 集合；媒体归属、去重和跨类型冲突由附件管理器统一校验。 */
     @JsonView(AddView.class)
-    private Long coverOssId;
+    @Size(max = 10, message = "文章图片最多上传{max}张", groups = {AddGroup.class, EditGroup.class})
+    private List<@NotNull(message = "文章图片附件ID不能为空",
+        groups = {AddGroup.class, EditGroup.class}) Long> attachmentOssIds;
+
+    /** 文章视频 OSS 附件 ID 集合；媒体归属、去重和跨类型冲突由附件管理器统一校验。 */
+    @JsonView(AddView.class)
+    @Size(max = 5, message = "文章视频最多上传{max}个", groups = {AddGroup.class, EditGroup.class})
+    private List<@NotNull(message = "文章视频附件ID不能为空",
+        groups = {AddGroup.class, EditGroup.class}) Long> videoOssIds;
 
     /** 发布状态：0 表示草稿，1 表示已发布。 */
     @JsonView(AddView.class)

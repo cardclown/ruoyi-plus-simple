@@ -22,6 +22,7 @@ public class ContentArticlePublishedQueryService {
 
     private final ContentArticleMapper articleMapper;
     private final ContentArticleTenantScope tenantScope;
+    private final ContentArticleAttachmentManager attachmentManager;
 
     public TableDataInfo<ContentArticlePublicVo> queryPage(
             String tenantId, ContentArticleQuery query, PageQuery pageQuery) {
@@ -31,7 +32,9 @@ public class ContentArticlePublishedQueryService {
             Page<ContentArticle> page = articleMapper.selectPublishedArticlePage(
                 buildPublicPage(pageQuery), tenantId,
                 safeQuery.getTitle(), safeQuery.getCategoryDictCode());
-            return TableDataInfo.build(page.convert(this::toPublicVo));
+            var result = page.convert(this::toPublicVo);
+            attachmentManager.populatePublic(result.getRecords());
+            return TableDataInfo.build(result);
         });
     }
 
@@ -42,7 +45,9 @@ public class ContentArticlePublishedQueryService {
             if (article == null) {
                 throw new ServiceException("文章不存在");
             }
-            return toPublicVo(article);
+            ContentArticlePublicVo vo = toPublicVo(article);
+            attachmentManager.populate(vo);
+            return vo;
         });
     }
 
@@ -73,7 +78,6 @@ public class ContentArticlePublishedQueryService {
         vo.setContent(article.getContent());
         vo.setCategoryDictCode(article.getCategoryDictCode());
         vo.setTagIds(article.getTagIds());
-        vo.setCoverOssId(article.getCoverOssId());
         vo.setPublishTime(article.getPublishTime());
         return vo;
     }

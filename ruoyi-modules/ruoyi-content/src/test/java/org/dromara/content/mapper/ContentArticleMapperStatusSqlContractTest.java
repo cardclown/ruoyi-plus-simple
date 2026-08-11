@@ -65,15 +65,14 @@ class ContentArticleMapperStatusSqlContractTest {
                     content varchar(1000) not null,
                     category_dict_code bigint not null,
                     tag_ids varchar(200),
-                    cover_oss_id bigint,
                     del_flag char(1) not null
                 )
                 """);
             statement.execute("""
                 insert into content_article
-                    (article_id, status, title, content, category_dict_code, tag_ids, cover_oss_id, del_flag)
+                    (article_id, status, title, content, category_dict_code, tag_ids, del_flag)
                 values
-                    (100, '0', '标题', '正文', 11, '21,22', 99, '0')
+                    (100, '0', '标题', '正文', 11, '21,22', '0')
                 """);
         }
         return dataSource;
@@ -115,7 +114,6 @@ class ContentArticleMapperStatusSqlContractTest {
             assertThat(result.getString("content")).isEqualTo("正文");
             assertThat(result.getLong("category_dict_code")).isEqualTo(11L);
             assertThat(result.getString("tag_ids")).isEqualTo("21,22");
-            assertThat(result.getLong("cover_oss_id")).isEqualTo(99L);
             assertThat(result.getString("del_flag")).isEqualTo("0");
         }
     }

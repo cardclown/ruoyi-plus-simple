@@ -4,9 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
-import org.dromara.common.core.service.OssService;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
@@ -18,6 +16,7 @@ import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.mapper.ContentArticleMapper;
 import org.dromara.content.mapper.ContentArticleTagMapper;
 import org.dromara.content.service.IContentArticleService;
+import org.dromara.content.service.support.ContentArticleAttachmentManager;
 import org.dromara.content.service.support.ContentArticleDictionaryService;
 import org.dromara.content.service.support.ContentArticleHtmlSanitizer;
 import org.dromara.content.service.support.ContentArticleOperationContext;
@@ -41,10 +40,10 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     private final ContentArticleMapper articleMapper;
     private final ContentArticleTagMapper tagMapper;
     private final ContentArticleDictionaryService dictionaryService;
-    private final OssService ossService;
     private final ContentArticleHtmlSanitizer htmlSanitizer;
     private final ContentArticlePublishPolicy publishPolicy;
     private final ContentArticleOperationContext operationContext;
+    private final ContentArticleAttachmentManager attachmentManager;
 
     @Override
     public ContentArticleVo queryById(Long articleId) {
@@ -52,18 +51,23 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (article == null) {
             throw new ServiceException("文章不存在或无权操作");
         }
-        return toVo(article);
+        ContentArticleVo vo = toVo(article);
+        attachmentManager.populate(vo);
+        return vo;
     }
 
     @Override
     public TableDataInfo<ContentArticleVo> queryPageList(ContentArticleQuery query, PageQuery pageQuery) {
         Page<ContentArticleVo> result = articleMapper.selectArticlePage(pageQuery.build(), buildQueryWrapper(query));
+        attachmentManager.populate(result.getRecords());
         return TableDataInfo.build(result);
     }
 
     @Override
     public List<ContentArticleVo> queryList(ContentArticleQuery query) {
-        return articleMapper.selectArticleList(buildQueryWrapper(query));
+        List<ContentArticleVo> articles = articleMapper.selectArticleList(buildQueryWrapper(query));
+        attachmentManager.populate(articles);
+        return articles;
     }
 
     /**
@@ -78,9 +82,9 @@ public class ContentArticleServiceImpl implements IContentArticleService {
             ContentArticle::getArticleId,
             ContentArticle::getTitle,
             ContentArticle::getSummary,
+            ContentArticle::getContent,
             ContentArticle::getCategoryDictCode,
             ContentArticle::getTagIds,
-            ContentArticle::getCoverOssId,
             ContentArticle::getStatus,
             ContentArticle::getPublishBy,
             ContentArticle::getPublishTime,
@@ -107,6 +111,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
             throw new ServiceException("文章新增失败");
         }
         bo.setArticleId(article.getArticleId());
+        attachmentManager.replace(article.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         insertTags(article.getArticleId(), article.getTagIds());
         return true;
     }
@@ -129,6 +134,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (articleMapper.updateArticleById(update) != 1) {
             throw new ServiceException("文章修改失败");
         }
+        attachmentManager.replace(update.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         tagMapper.deleteByArticleId(update.getArticleId());
         insertTags(update.getArticleId(), update.getTagIds());
         return true;
@@ -164,7 +170,7 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     }
 
     /**
-     * 统一准备待持久化文章，依次完成状态、租户字典、租户 OSS 和富文本安全校验。
+     * 统一准备待持久化文章，依次完成状态、租户字典和富文本安全校验。
      *
      * @param bo 客户端提交的文章业务对象
      * @return 已规范化标签并完成富文本过滤的文章实体
@@ -172,8 +178,6 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     private ContentArticle prepareArticle(ContentArticleBo bo) {
         validateStatus(bo.getStatus());
         List<Long> tagIds = dictionaryService.validateAndNormalize(bo.getCategoryDictCode(), bo.getTagIds());
-        validateCoverOss(bo.getCoverOssId());
-
         ContentArticle article = toEntity(bo);
         article.setTagIds(tagIds);
         article.setContent(htmlSanitizer.sanitize(bo.getContent()));
@@ -193,7 +197,6 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         article.setContent(bo.getContent());
         article.setCategoryDictCode(bo.getCategoryDictCode());
         article.setTagIds(bo.getTagIds());
-        article.setCoverOssId(bo.getCoverOssId());
         article.setStatus(bo.getStatus());
         return article;
     }
@@ -212,7 +215,6 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         vo.setContent(article.getContent());
         vo.setCategoryDictCode(article.getCategoryDictCode());
         vo.setTagIds(article.getTagIds());
-        vo.setCoverOssId(article.getCoverOssId());
         vo.setStatus(article.getStatus());
         vo.setPublishBy(article.getPublishBy());
         vo.setPublishTime(article.getPublishTime());
@@ -229,22 +231,6 @@ public class ContentArticleServiceImpl implements IContentArticleService {
     private void validateStatus(String status) {
         if (!"0".equals(status) && !"1".equals(status)) {
             throw new ServiceException("发布状态只能为0或1");
-        }
-    }
-
-    /**
-     * 校验封面文件存在且可由当前租户访问；未设置封面时不校验。
-     *
-     * @param coverOssId 封面 OSS 文件 ID，可为空
-     */
-    private void validateCoverOss(Long coverOssId) {
-        if (coverOssId == null) {
-            return;
-        }
-        List<OssDTO> files = ossService.selectByIds(coverOssId.toString());
-        boolean exists = files != null && files.stream().anyMatch(file -> coverOssId.equals(file.getOssId()));
-        if (!exists) {
-            throw new ServiceException("封面文件不存在或不属于当前租户");
         }
     }
 
@@ -299,7 +285,8 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (deletedIds.size() != articleIds.size()) {
             throw new ServiceException("只能物理删除已逻辑删除且有权操作的文章");
         }
-        // 先清理标签关联，再删除文章本体，避免遗留无主关系记录。
+        // 先删除独占 OSS 对象和附件关联，再清理标签并删除文章本体。
+        attachmentManager.deletePermanently(articleIds);
         tagMapper.deleteByArticleIds(articleIds);
         int deleted = articleMapper.physicalDeleteByIds(articleIds);
         if (deleted != articleIds.size()) {

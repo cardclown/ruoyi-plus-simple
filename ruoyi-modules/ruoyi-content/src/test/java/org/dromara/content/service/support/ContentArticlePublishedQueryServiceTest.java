@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 class ContentArticlePublishedQueryServiceTest {
 
     private final ContentArticleMapper mapper = mock(ContentArticleMapper.class);
+    private final ContentArticleAttachmentManager attachmentManager = mock(ContentArticleAttachmentManager.class);
     private final AtomicReference<String> tenantSeen = new AtomicReference<>();
     private final ContentArticleTenantScope tenantScope = new ContentArticleTenantScope() {
         @Override
@@ -41,7 +42,7 @@ class ContentArticlePublishedQueryServiceTest {
         }
     };
     private final ContentArticlePublishedQueryService service =
-        new ContentArticlePublishedQueryService(mapper, tenantScope);
+        new ContentArticlePublishedQueryService(mapper, tenantScope, attachmentManager);
 
     @Test
     void pagePassesTenantAndOnlyAllowedFiltersToMapper() {
@@ -54,6 +55,14 @@ class ContentArticlePublishedQueryServiceTest {
         page.setRecords(List.of(article(100L, "正文")));
         when(mapper.selectPublishedArticlePage(any(), eq("140872"), eq("工程"), eq(11L)))
             .thenReturn(page);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            List<ContentArticlePublicVo> articles = invocation.getArgument(0);
+            articles.forEach(article -> {
+                article.setAttachmentOssIds(List.of(10L));
+                article.setVideoOssIds(List.of(20L));
+            });
+            return null;
+        }).when(attachmentManager).populatePublic(any());
 
         TableDataInfo<ContentArticlePublicVo> result = service.queryPage(
             "140872", query, new PageQuery(10, 1));
@@ -63,8 +72,11 @@ class ContentArticlePublishedQueryServiceTest {
         assertThat(result.getRows()).singleElement().satisfies(vo -> {
             assertThat(vo.getArticleId()).isEqualTo(100L);
             assertThat(vo.getContent()).isEqualTo("正文");
+            assertThat(vo.getAttachmentOssIds()).containsExactly(10L);
+            assertThat(vo.getVideoOssIds()).containsExactly(20L);
         });
         verify(mapper).selectPublishedArticlePage(any(), eq("140872"), eq("工程"), eq(11L));
+        verify(attachmentManager).populatePublic(result.getRows());
     }
 
     @Test
@@ -134,12 +146,21 @@ class ContentArticlePublishedQueryServiceTest {
     void detailReturnsOnlyPublicFieldsFromMapperResult() {
         when(mapper.selectPublishedArticleById("140872", 100L))
             .thenReturn(article(100L, "正文"));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ContentArticlePublicVo article = invocation.getArgument(0);
+            article.setAttachmentOssIds(List.of(10L));
+            article.setVideoOssIds(List.of(20L));
+            return null;
+        }).when(attachmentManager).populate(any(ContentArticlePublicVo.class));
 
         ContentArticlePublicVo result = service.queryById("140872", 100L);
 
         assertThat(tenantSeen.get()).isEqualTo("140872");
         assertThat(result.getArticleId()).isEqualTo(100L);
         assertThat(result.getContent()).isEqualTo("正文");
+        assertThat(result.getAttachmentOssIds()).containsExactly(10L);
+        assertThat(result.getVideoOssIds()).containsExactly(20L);
+        verify(attachmentManager).populate(result);
     }
 
     @Test
@@ -181,7 +202,6 @@ class ContentArticlePublishedQueryServiceTest {
         article.setContent(content);
         article.setCategoryDictCode(11L);
         article.setTagIds(List.of(21L));
-        article.setCoverOssId(99L);
         article.setStatus("1");
         article.setPublishBy(9L);
         article.setPublishTime(new Date(1_000L));

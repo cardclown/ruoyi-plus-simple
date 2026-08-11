@@ -40,7 +40,7 @@ class ContentArticlePublicMapperSqlTest {
                 .extracting(ContentArticle::getArticleId)
                 .containsExactly(104L, 100L);
             assertThat(result.getRecords())
-                .allSatisfy(article -> assertThat(article.getContent()).isNull());
+                .allSatisfy(article -> assertThat(article.getContent()).isEqualTo("正文"));
         }
     }
 
@@ -89,7 +89,6 @@ class ContentArticlePublicMapperSqlTest {
                     content varchar(2000),
                     category_dict_code bigint not null,
                     tag_ids varchar(200),
-                    cover_oss_id bigint,
                     status char(1) not null,
                     publish_by bigint,
                     publish_time timestamp,
@@ -111,10 +110,10 @@ class ContentArticlePublicMapperSqlTest {
         statement.executeUpdate("""
             insert into content_article
                 (article_id, tenant_id, title, summary, content,
-                 category_dict_code, tag_ids, cover_oss_id,
+                 category_dict_code, tag_ids,
                  status, publish_by, publish_time, del_flag)
             values
-                (%d, '%s', '%s', '简介', '正文', %d, '21,22', 99,
+                (%d, '%s', '%s', '简介', '正文', %d, '21,22',
                  '%s', 9, timestamp '2026-08-10 10:00:00', '%s')
             """.formatted(articleId, tenantId, title, categoryDictCode, status, delFlag));
     }
