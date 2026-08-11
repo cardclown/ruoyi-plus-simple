@@ -90,12 +90,12 @@ class ContentArticleControllerContractTest {
 
     @Test
     void exposesFixedCategoryOptionsEndpoint() throws Exception {
-        assertDictionaryEndpoint("categoryOptions", "/category-options");
+        assertDictionaryEndpoint("categoryOptions", "/categoryOptions");
     }
 
     @Test
     void exposesFixedTagOptionsEndpoint() throws Exception {
-        assertDictionaryEndpoint("tagOptions", "/tag-options");
+        assertDictionaryEndpoint("tagOptions", "/tagOptions");
     }
 
     @Test

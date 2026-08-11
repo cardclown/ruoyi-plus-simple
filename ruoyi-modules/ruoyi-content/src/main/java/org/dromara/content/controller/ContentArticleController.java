@@ -62,7 +62,7 @@ public class ContentArticleController extends BaseController {
         "content:article:add",
         "content:article:edit"
     }, mode = SaMode.OR)
-    @GetMapping("/category-options")
+    @GetMapping("/categoryOptions")
     public R<List<ContentArticleDictOptionVo>> categoryOptions() {
         return R.ok(dictionaryService.categoryOptions());
     }
@@ -78,7 +78,7 @@ public class ContentArticleController extends BaseController {
         "content:article:add",
         "content:article:edit"
     }, mode = SaMode.OR)
-    @GetMapping("/tag-options")
+    @GetMapping("/tagOptions")
     public R<List<ContentArticleDictOptionVo>> tagOptions() {
         return R.ok(dictionaryService.tagOptions());
     }

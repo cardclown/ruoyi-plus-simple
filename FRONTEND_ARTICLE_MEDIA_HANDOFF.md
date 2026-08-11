@@ -60,8 +60,8 @@ interface ArticleForm {
 
 | 功能 | 方法 | 接口 |
 | --- | --- | --- |
-| 获取文章分类 | GET | `/content/article/category-options` |
-| 获取全部可选标签 | GET | `/content/article/tag-options` |
+| 获取文章分类 | GET | `/content/article/categoryOptions` |
+| 获取全部可选标签 | GET | `/content/article/tagOptions` |
 
 进入新增或编辑页面时可以并行请求这两个接口。
 
