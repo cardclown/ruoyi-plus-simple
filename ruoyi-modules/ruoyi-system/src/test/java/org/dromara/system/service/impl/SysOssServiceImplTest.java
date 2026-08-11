@@ -148,6 +148,33 @@ class SysOssServiceImplTest {
     }
 
     @Test
+    void bindRejectsLockedAttachmentWhoseOwnerChangedBeforeTheLockWasAcquired() {
+        when(mapper.selectList(any())).thenReturn(List.of(oss(10L,
+            "{\"refType\":\"content_article\",\"refId\":\"99\",\"isTemp\":false}")));
+
+        assertThatThrownBy(() -> service.bindToBusiness(List.of(10L), "content_article", "100"))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("附件已绑定其他业务");
+
+        verify(mapper, never()).updateById(any(SysOss.class));
+    }
+
+    @Test
+    void bindIsIdempotentForTheSameLockedBusinessReference() {
+        when(mapper.selectList(any())).thenReturn(List.of(oss(10L,
+            "{\"refType\":\"content_article\",\"refId\":\"100\",\"isTemp\":false}")));
+        when(mapper.updateById(any(SysOss.class))).thenReturn(1);
+
+        service.bindToBusiness(List.of(10L), "content_article", "100");
+
+        verify(mapper).updateById(ossCaptor.capture());
+        SysOssExt ext = JsonUtils.parseObject(ossCaptor.getValue().getExt1(), SysOssExt.class);
+        assertThat(ext)
+            .extracting(SysOssExt::getRefType, SysOssExt::getRefId, SysOssExt::getIsTemp)
+            .containsExactly("content_article", "100", false);
+    }
+
+    @Test
     void uploadPersistsNewAttachmentAsTemporary() {
         MockMultipartFile file = multipartFileRejectingGetBytes("cover.png", "image/png", new byte[]{1, 2, 3});
         UploadResult uploadResult = UploadResult.builder()

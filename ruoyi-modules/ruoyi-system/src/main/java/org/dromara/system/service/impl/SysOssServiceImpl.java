@@ -53,6 +53,7 @@ import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -192,6 +193,15 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         List<SysOss> ossList = baseMapper.selectList(lockQuery);
         if (ossList.size() != ids.size()) {
             throw new ServiceException("部分附件不存在或不属于当前租户");
+        }
+        for (SysOss oss : ossList) {
+            SysOssExt ext = parseExt(oss.getExt1());
+            boolean unbound = StringUtils.isBlank(ext.getRefType()) && StringUtils.isBlank(ext.getRefId());
+            boolean sameReference = Objects.equals(refType, ext.getRefType())
+                && Objects.equals(refId, ext.getRefId());
+            if (!unbound && !sameReference) {
+                throw new ServiceException("附件已绑定其他业务");
+            }
         }
         for (SysOss oss : ossList) {
             SysOssExt ext = parseExt(oss.getExt1());

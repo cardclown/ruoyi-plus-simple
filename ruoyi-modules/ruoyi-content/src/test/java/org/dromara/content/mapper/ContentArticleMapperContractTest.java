@@ -31,6 +31,7 @@ class ContentArticleMapperContractTest {
     void allArticleReadAndWriteEntryPointsApplyCreatorDataPermission() {
         for (String methodName : new String[]{
             "selectArticleById",
+            "selectByIdForUpdate",
             "selectArticlePage",
             "selectArticleList",
             "selectExistingArticleIds",

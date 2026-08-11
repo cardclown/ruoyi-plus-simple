@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.service.OssService;
+import org.dromara.content.domain.ContentArticle;
 import org.dromara.content.domain.ContentArticleAttachment;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
+import org.dromara.content.mapper.ContentArticleMapper;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -26,6 +28,13 @@ import javax.sql.DataSource;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +52,7 @@ import static org.mockito.Mockito.when;
 class ContentArticleAttachmentManagerTest {
 
     private final ContentArticleAttachmentMapper mapper = mock(ContentArticleAttachmentMapper.class);
+    private final ContentArticleMapper articleMapper = mock(ContentArticleMapper.class);
     private final OssService ossService = mock(OssService.class);
     private final ContentArticleOperationContext operationContext = mock(ContentArticleOperationContext.class);
     private ContentArticleAttachmentManager manager;
@@ -51,7 +61,8 @@ class ContentArticleAttachmentManagerTest {
     void setUp() {
         when(operationContext.currentUserId()).thenReturn(9L);
         when(operationContext.now()).thenReturn(new Date(1_000L));
-        manager = new ContentArticleAttachmentManager(mapper, ossService, operationContext);
+        when(articleMapper.selectByIdForUpdate(100L)).thenReturn(article(100L));
+        manager = new ContentArticleAttachmentManager(articleMapper, mapper, ossService, operationContext);
     }
 
     @Test
@@ -232,6 +243,23 @@ class ContentArticleAttachmentManagerTest {
     }
 
     @Test
+    void populatesEveryVoWhenThePageContainsDuplicateArticleIds() {
+        ContentArticleVo first = articleVo(100L);
+        ContentArticleVo duplicate = articleVo(100L);
+        when(mapper.selectByArticleIds(List.of(100L))).thenReturn(List.of(
+            relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
+            relation(2L, 100L, 20L, ContentArticleAttachmentType.VIDEO, 0)));
+
+        manager.populate(List.of(first, duplicate));
+
+        assertThat(first.getAttachmentOssIds()).containsExactly(10L);
+        assertThat(first.getVideoOssIds()).containsExactly(20L);
+        assertThat(duplicate.getAttachmentOssIds()).containsExactly(10L);
+        assertThat(duplicate.getVideoOssIds()).containsExactly(20L);
+        verify(mapper).selectByArticleIds(List.of(100L));
+    }
+
+    @Test
     void permanentDeleteRemovesObjectsBeforeRelationsAndStopsOnObjectFailure() {
         List<ContentArticleAttachment> relations = List.of(
             relation(1L, 100L, 10L, ContentArticleAttachmentType.IMAGE, 0),
@@ -257,12 +285,15 @@ class ContentArticleAttachmentManagerTest {
     void realTransactionRollsBackBindingAndRelationWriteWhenBatchReportsFailure() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(TxConfig.class)) {
             JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+            jdbc.execute("create table content_article (article_id bigint primary key)");
             jdbc.execute("create table sys_oss (oss_id bigint primary key, ref_id varchar(32))");
             jdbc.execute("create table content_article_attachment (article_attachment_id bigint auto_increment primary key, article_id bigint, oss_id bigint unique)");
             jdbc.update("insert into sys_oss (oss_id, ref_id) values (10, null)");
 
             ContentArticleAttachmentMapper txMapper = context.getBean(ContentArticleAttachmentMapper.class);
+            ContentArticleMapper txArticleMapper = context.getBean(ContentArticleMapper.class);
             OssService txOss = context.getBean(OssService.class);
+            when(txArticleMapper.selectByIdForUpdate(100L)).thenReturn(article(100L));
             when(txMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
             when(txOss.selectByIds(List.of(10L))).thenReturn(List.of(image(10L)));
             org.mockito.Mockito.doAnswer(invocation -> {
@@ -283,10 +314,105 @@ class ContentArticleAttachmentManagerTest {
         }
     }
 
+    @Test
+    void parentArticleLockSerializesConcurrentReplacementWhenNoRelationsExist() throws Exception {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(TxConfig.class)) {
+            JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+            jdbc.execute("create table content_article (article_id bigint primary key)");
+            jdbc.execute("""
+                create table content_article_attachment (
+                    article_attachment_id bigint auto_increment primary key,
+                    article_id bigint not null,
+                    oss_id bigint not null unique,
+                    attachment_type varchar(1) not null,
+                    sort_num integer not null,
+                    create_by bigint,
+                    create_time timestamp)
+                """);
+            jdbc.update("insert into content_article (article_id) values (100)");
+
+            ContentArticleMapper txArticleMapper = context.getBean(ContentArticleMapper.class);
+            ContentArticleAttachmentMapper txMapper = context.getBean(ContentArticleAttachmentMapper.class);
+            OssService txOss = context.getBean(OssService.class);
+            CountDownLatch firstLocked = new CountDownLatch(1);
+            CountDownLatch secondAttempted = new CountDownLatch(1);
+            CountDownLatch releaseFirst = new CountDownLatch(1);
+            AtomicInteger lockAttempts = new AtomicInteger();
+            when(txArticleMapper.selectByIdForUpdate(100L)).thenAnswer(invocation -> {
+                int attempt = lockAttempts.incrementAndGet();
+                if (attempt == 2) {
+                    secondAttempted.countDown();
+                }
+                Long articleId = jdbc.queryForObject(
+                    "select article_id from content_article where article_id = 100 for update", Long.class);
+                if (attempt == 1) {
+                    firstLocked.countDown();
+                    if (!releaseFirst.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("first replacement was not released");
+                    }
+                }
+                return article(articleId);
+            });
+            when(txMapper.selectList(any(Wrapper.class))).thenAnswer(invocation -> jdbc.query(
+                "select * from content_article_attachment where article_id = 100 order by article_attachment_id",
+                (rs, rowNum) -> relation(rs.getLong("article_attachment_id"), rs.getLong("article_id"),
+                    rs.getLong("oss_id"), ContentArticleAttachmentType.valueOf(
+                        "0".equals(rs.getString("attachment_type")) ? "IMAGE" : "VIDEO"),
+                    rs.getInt("sort_num"))));
+            when(txOss.selectByIds(anyCollection())).thenAnswer(invocation ->
+                invocation.<Collection<Long>>getArgument(0).stream().map(ContentArticleAttachmentManagerTest::image).toList());
+            when(txMapper.insertBatch(anyCollection())).thenAnswer(invocation -> {
+                int inserted = 0;
+                for (ContentArticleAttachment relation : invocation.<Collection<ContentArticleAttachment>>getArgument(0)) {
+                    inserted += jdbc.update("""
+                        insert into content_article_attachment
+                            (article_id, oss_id, attachment_type, sort_num, create_by, create_time)
+                        values (?, ?, ?, ?, ?, ?)
+                        """, relation.getArticleId(), relation.getOssId(), relation.getAttachmentType(),
+                        relation.getSortNum(), relation.getCreateBy(), relation.getCreateTime());
+                }
+                return inserted == invocation.<Collection<?>>getArgument(0).size();
+            });
+            when(txMapper.deleteByIds(anyCollection())).thenAnswer(invocation -> {
+                Collection<Long> ids = invocation.getArgument(0);
+                int deleted = 0;
+                for (Long id : ids) {
+                    deleted += jdbc.update(
+                        "delete from content_article_attachment where article_attachment_id = ?", id);
+                }
+                return deleted;
+            });
+
+            ContentArticleAttachmentManager transactional = context.getBean(ContentArticleAttachmentManager.class);
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            try {
+                Future<?> first = executor.submit(() -> transactional.replace(100L, List.of(10L), List.of()));
+                assertThat(firstLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                Future<?> second = executor.submit(() -> transactional.replace(100L, List.of(11L), List.of()));
+                assertThat(secondAttempted.await(5, TimeUnit.SECONDS)).isTrue();
+                releaseFirst.countDown();
+                first.get(5, TimeUnit.SECONDS);
+                second.get(5, TimeUnit.SECONDS);
+            } finally {
+                executor.shutdownNow();
+            }
+
+            assertThat(jdbc.queryForList(
+                "select oss_id from content_article_attachment order by oss_id", Long.class))
+                .containsExactly(11L);
+        }
+    }
+
     private static ContentArticleVo articleVo(Long articleId) {
         ContentArticleVo vo = new ContentArticleVo();
         vo.setArticleId(articleId);
         return vo;
+    }
+
+    private static ContentArticle article(Long articleId) {
+        ContentArticle article = new ContentArticle();
+        article.setArticleId(articleId);
+        return article;
     }
 
     private static ContentArticleAttachment relation(Long relationId, Long articleId, Long ossId,
@@ -329,7 +455,8 @@ class ContentArticleAttachmentManagerTest {
         @Bean
         DataSource dataSource() {
             JdbcDataSource dataSource = new JdbcDataSource();
-            dataSource.setURL("jdbc:h2:mem:attachment_manager_tx;MODE=MySQL;DB_CLOSE_DELAY=-1");
+            dataSource.setURL("jdbc:h2:mem:attachment_manager_tx_" + UUID.randomUUID()
+                + ";MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=5000");
             dataSource.setUser("sa");
             return dataSource;
         }
@@ -350,6 +477,11 @@ class ContentArticleAttachmentManagerTest {
         }
 
         @Bean
+        ContentArticleMapper articleMapper() {
+            return mock(ContentArticleMapper.class);
+        }
+
+        @Bean
         OssService ossService() {
             return mock(OssService.class);
         }
@@ -363,10 +495,11 @@ class ContentArticleAttachmentManagerTest {
         }
 
         @Bean
-        ContentArticleAttachmentManager manager(ContentArticleAttachmentMapper attachmentMapper,
+        ContentArticleAttachmentManager manager(ContentArticleMapper articleMapper,
+                                                  ContentArticleAttachmentMapper attachmentMapper,
                                                   OssService ossService,
                                                   ContentArticleOperationContext operationContext) {
-            return new ContentArticleAttachmentManager(attachmentMapper, ossService, operationContext);
+            return new ContentArticleAttachmentManager(articleMapper, attachmentMapper, ossService, operationContext);
         }
     }
 }

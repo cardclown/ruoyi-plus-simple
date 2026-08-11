@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.dto.OssDTO;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.oss.TechnicalMediaMetadataPolicy;
+import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.common.core.service.OssService;
 import org.dromara.content.domain.ContentArticleAttachment;
 import org.dromara.content.domain.vo.ContentArticleVo;
 import org.dromara.content.enums.ContentArticleAttachmentType;
 import org.dromara.content.mapper.ContentArticleAttachmentMapper;
+import org.dromara.content.mapper.ContentArticleMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +25,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -36,28 +38,8 @@ import java.util.stream.Collectors;
 public class ContentArticleAttachmentManager {
 
     private static final String ARTICLE_REF_TYPE = "content_article";
-    private static final String IMAGE_FILE_TYPE = "IMAGE";
-    private static final String VIDEO_FILE_TYPE = "VIDEO";
-    private static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024;
 
-    private static final Map<String, Set<String>> IMAGE_FORMATS = Map.of(
-        "jpg", Set.of("image/jpeg", "image/pjpeg"),
-        "jpeg", Set.of("image/jpeg", "image/pjpeg"),
-        "png", Set.of("image/png", "image/x-png"),
-        "gif", Set.of("image/gif"),
-        "webp", Set.of("image/webp")
-    );
-    private static final Map<String, Set<String>> VIDEO_FORMATS = Map.of(
-        "mp4", Set.of("video/mp4", "application/mp4"),
-        "mov", Set.of("video/quicktime"),
-        "avi", Set.of("video/x-msvideo", "video/avi", "video/msvideo"),
-        "webm", Set.of("video/webm"),
-        "mkv", Set.of("video/x-matroska", "video/matroska"),
-        "wmv", Set.of("video/x-ms-wmv", "video/x-ms-asf"),
-        "flv", Set.of("video/x-flv", "video/flv")
-    );
-
+    private final ContentArticleMapper articleMapper;
     private final ContentArticleAttachmentMapper mapper;
     private final OssService ossService;
     private final ContentArticleOperationContext operationContext;
@@ -81,6 +63,9 @@ public class ContentArticleAttachmentManager {
         List<Long> targetIds = new ArrayList<>(imageIds.size() + videoIds.size());
         targetIds.addAll(imageIds);
         targetIds.addAll(videoIds);
+        if (articleMapper.selectByIdForUpdate(articleId) == null) {
+            throw new ServiceException("文章不存在或无权操作");
+        }
         List<ContentArticleAttachment> relevantRelations = selectRelevantRelationsForUpdate(articleId, targetIds);
         Map<Long, ContentArticleAttachment> currentByOssId = relevantRelations.stream()
             .filter(relation -> articleId.equals(relation.getArticleId()))
@@ -150,23 +135,25 @@ public class ContentArticleAttachmentManager {
         if (articleIds.isEmpty()) {
             return;
         }
-        Map<Long, ContentArticleVo> articleById = present.stream()
+        Map<Long, List<ContentArticleVo>> articlesById = present.stream()
             .filter(article -> article.getArticleId() != null)
-            .collect(Collectors.toMap(ContentArticleVo::getArticleId, Function.identity(), (left, right) -> left));
+            .collect(Collectors.groupingBy(ContentArticleVo::getArticleId));
         List<ContentArticleAttachment> relations = mapper.selectByArticleIds(articleIds).stream()
             .sorted(Comparator.comparing(ContentArticleAttachment::getArticleId)
                 .thenComparing(ContentArticleAttachment::getAttachmentType)
                 .thenComparing(ContentArticleAttachment::getSortNum))
             .toList();
         for (ContentArticleAttachment relation : relations) {
-            ContentArticleVo article = articleById.get(relation.getArticleId());
-            if (article == null) {
+            List<ContentArticleVo> matchingArticles = articlesById.get(relation.getArticleId());
+            if (matchingArticles == null) {
                 continue;
             }
-            if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
-                article.getAttachmentOssIds().add(relation.getOssId());
-            } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
-                article.getVideoOssIds().add(relation.getOssId());
+            for (ContentArticleVo article : matchingArticles) {
+                if (ContentArticleAttachmentType.IMAGE.getCode().equals(relation.getAttachmentType())) {
+                    article.getAttachmentOssIds().add(relation.getOssId());
+                } else if (ContentArticleAttachmentType.VIDEO.getCode().equals(relation.getAttachmentType())) {
+                    article.getVideoOssIds().add(relation.getOssId());
+                }
             }
         }
     }
@@ -267,11 +254,11 @@ public class ContentArticleAttachmentManager {
                 && existing != null
                 && ContentArticleAttachmentType.IMAGE.getCode().equals(existing.getAttachmentType())
                 && isBlank(file.getFileType());
-            String expectedType = type == ContentArticleAttachmentType.IMAGE ? IMAGE_FILE_TYPE : VIDEO_FILE_TYPE;
-            if (!unchangedLegacyImage && !expectedType.equalsIgnoreCase(value(file.getFileType()))) {
+            TechnicalMediaType technicalType = technicalType(type);
+            if (!unchangedLegacyImage && !technicalType.name().equalsIgnoreCase(value(file.getFileType()))) {
                 throw new ServiceException("附件类型与文章媒体类型不匹配");
             }
-            validateMediaMetadata(file, type);
+            validateMediaMetadata(file, type, technicalType);
         }
     }
 
@@ -284,24 +271,22 @@ public class ContentArticleAttachmentManager {
         }
     }
 
-    private static void validateMediaMetadata(OssDTO file, ContentArticleAttachmentType type) {
+    private static void validateMediaMetadata(OssDTO file, ContentArticleAttachmentType type,
+                                              TechnicalMediaType technicalType) {
         Long size = file.getFileSize();
         if (size == null || size < 0) {
             throw new ServiceException("附件元数据不完整");
         }
-        if (type == ContentArticleAttachmentType.IMAGE && size > MAX_IMAGE_BYTES) {
-            throw new ServiceException("单张图片不能超过50MB");
-        }
-        if (type == ContentArticleAttachmentType.VIDEO && size > MAX_VIDEO_BYTES) {
-            throw new ServiceException("单个视频不能超过2GB");
-        }
-        Map<String, Set<String>> formats = type == ContentArticleAttachmentType.IMAGE ? IMAGE_FORMATS : VIDEO_FORMATS;
-        String extension = normalizeExtension(file.getFileSuffix());
-        String contentType = normalizeContentType(file.getContentType());
-        if (!formats.getOrDefault(extension, Set.of()).contains(contentType)) {
+        TechnicalMediaMetadataPolicy.validateSize(technicalType, size);
+        if (TechnicalMediaMetadataPolicy.canonicalContentType(
+            technicalType, file.getFileSuffix(), file.getContentType()).isEmpty()) {
             throw new ServiceException(type == ContentArticleAttachmentType.IMAGE
                 ? "图片文件格式不合法" : "视频文件格式不合法");
         }
+    }
+
+    private static TechnicalMediaType technicalType(ContentArticleAttachmentType type) {
+        return type == ContentArticleAttachmentType.IMAGE ? TechnicalMediaType.IMAGE : TechnicalMediaType.VIDEO;
     }
 
     private void buildChanges(Long articleId, List<Long> ids, ContentArticleAttachmentType type,
@@ -333,17 +318,6 @@ public class ContentArticleAttachmentManager {
                 updates.add(existing);
             }
         }
-    }
-
-    private static String normalizeExtension(String suffix) {
-        String normalized = value(suffix).toLowerCase(Locale.ROOT);
-        return normalized.startsWith(".") ? normalized.substring(1) : normalized;
-    }
-
-    private static String normalizeContentType(String contentType) {
-        String normalized = value(contentType).toLowerCase(Locale.ROOT);
-        int parameters = normalized.indexOf(';');
-        return (parameters < 0 ? normalized : normalized.substring(0, parameters)).trim();
     }
 
     private static boolean isBlank(String value) {

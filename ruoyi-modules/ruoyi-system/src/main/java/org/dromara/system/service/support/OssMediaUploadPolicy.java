@@ -1,6 +1,8 @@
 package org.dromara.system.service.support;
 
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.oss.TechnicalMediaMetadataPolicy;
+import org.dromara.common.core.oss.TechnicalMediaType;
 import org.dromara.system.domain.enums.OssFileType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,8 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,40 +21,30 @@ import java.util.Set;
 public class OssMediaUploadPolicy {
 
     public static final int MAX_PROBE_BYTES = 4 * 1024;
-    public static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
-    public static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024;
 
     private static final Set<String> MP4_BRANDS = Set.of(
         "isom", "iso2", "iso5", "iso6", "mp41", "mp42", "avc1", "M4V ", "MSNV", "3gp4", "3gp5"
     );
 
-    private static final List<MediaFormat> FORMATS = List.of(
-        new MediaFormat(OssFileType.IMAGE, Set.of("jpg", "jpeg"), "image/jpeg",
-            Set.of("image/jpeg", "image/pjpeg"), OssMediaUploadPolicy::isJpeg),
-        new MediaFormat(OssFileType.IMAGE, Set.of("png"), "image/png",
-            Set.of("image/png", "image/x-png"), OssMediaUploadPolicy::isPng),
-        new MediaFormat(OssFileType.IMAGE, Set.of("gif"), "image/gif",
-            Set.of("image/gif"), OssMediaUploadPolicy::isGif),
-        new MediaFormat(OssFileType.IMAGE, Set.of("webp"), "image/webp",
-            Set.of("image/webp"), bytes -> isRiff(bytes, "WEBP")),
-        new MediaFormat(OssFileType.VIDEO, Set.of("mp4"), "video/mp4",
-            Set.of("video/mp4", "application/mp4"), OssMediaUploadPolicy::isMp4),
-        new MediaFormat(OssFileType.VIDEO, Set.of("mov"), "video/quicktime",
-            Set.of("video/quicktime"), OssMediaUploadPolicy::isMov),
-        new MediaFormat(OssFileType.VIDEO, Set.of("avi"), "video/x-msvideo",
-            Set.of("video/x-msvideo", "video/avi", "video/msvideo"), bytes -> isRiff(bytes, "AVI ")),
-        new MediaFormat(OssFileType.VIDEO, Set.of("webm"), "video/webm",
-            Set.of("video/webm"), bytes -> isEbml(bytes, "webm")),
-        new MediaFormat(OssFileType.VIDEO, Set.of("mkv"), "video/x-matroska",
-            Set.of("video/x-matroska", "video/matroska"), bytes -> isEbml(bytes, "matroska")),
-        new MediaFormat(OssFileType.VIDEO, Set.of("wmv"), "video/x-ms-wmv",
-            Set.of("video/x-ms-wmv", "video/x-ms-asf"), OssMediaUploadPolicy::isWmv),
-        new MediaFormat(OssFileType.VIDEO, Set.of("flv"), "video/x-flv",
-            Set.of("video/x-flv", "video/flv"), OssMediaUploadPolicy::isFlv)
+    private static final Map<String, SignatureMatcher> SIGNATURE_MATCHERS = Map.ofEntries(
+        Map.entry("image/jpeg", OssMediaUploadPolicy::isJpeg),
+        Map.entry("image/png", OssMediaUploadPolicy::isPng),
+        Map.entry("image/gif", OssMediaUploadPolicy::isGif),
+        Map.entry("image/webp", bytes -> isRiff(bytes, "WEBP")),
+        Map.entry("video/mp4", OssMediaUploadPolicy::isMp4),
+        Map.entry("video/quicktime", OssMediaUploadPolicy::isMov),
+        Map.entry("video/x-msvideo", bytes -> isRiff(bytes, "AVI ")),
+        Map.entry("video/webm", bytes -> isEbml(bytes, "webm")),
+        Map.entry("video/x-matroska", bytes -> isEbml(bytes, "matroska")),
+        Map.entry("video/x-ms-wmv", OssMediaUploadPolicy::isWmv),
+        Map.entry("video/x-flv", OssMediaUploadPolicy::isFlv)
     );
 
     public String validate(MultipartFile file, OssFileType fileType) {
-        validateSize(file.getSize(), fileType);
+        TechnicalMediaType technicalType = TechnicalMediaType.valueOf(fileType.name());
+        TechnicalMediaMetadataPolicy.validateSize(technicalType, file.getSize());
+        String canonicalType = TechnicalMediaMetadataPolicy.canonicalContentType(
+            technicalType, file.getOriginalFilename(), file.getContentType()).orElseThrow(() -> mismatch(fileType));
         byte[] prefix;
         try (InputStream input = file.getInputStream()) {
             prefix = input.readNBytes(MAX_PROBE_BYTES);
@@ -62,48 +53,16 @@ public class OssMediaUploadPolicy {
             wrapped.initCause(exception);
             throw wrapped;
         }
-        String extension = extension(file.getOriginalFilename());
-        String declaredType = normalizeContentType(file.getContentType());
-        return FORMATS.stream()
-            .filter(format -> format.fileType() == fileType)
-            .filter(format -> format.extensions().contains(extension))
-            .filter(format -> format.mimeAliases().contains(declaredType))
-            .filter(format -> format.matcher().matches(prefix))
-            .map(MediaFormat::canonicalMime)
-            .findFirst()
-            .orElseThrow(() -> mismatch(fileType));
-    }
-
-    private static void validateSize(long size, OssFileType fileType) {
-        if (fileType == OssFileType.IMAGE && size > MAX_IMAGE_BYTES) {
-            throw new ServiceException("单张图片不能超过50MB");
+        SignatureMatcher matcher = SIGNATURE_MATCHERS.get(canonicalType);
+        if (matcher == null || !matcher.matches(prefix)) {
+            throw mismatch(fileType);
         }
-        if (fileType == OssFileType.VIDEO && size > MAX_VIDEO_BYTES) {
-            throw new ServiceException("单个视频不能超过2GB");
-        }
+        return canonicalType;
     }
 
     private static ServiceException mismatch(OssFileType fileType) {
         return new ServiceException(fileType == OssFileType.IMAGE
             ? "图片文件内容与格式不匹配" : "视频文件内容与格式不匹配");
-    }
-
-    private static String extension(String filename) {
-        if (filename == null) {
-            return "";
-        }
-        int dot = filename.lastIndexOf('.');
-        return dot < 0 || dot == filename.length() - 1
-            ? "" : filename.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
-
-    private static String normalizeContentType(String contentType) {
-        if (contentType == null) {
-            return "";
-        }
-        int parameters = contentType.indexOf(';');
-        String value = parameters < 0 ? contentType : contentType.substring(0, parameters);
-        return value.trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean isJpeg(byte[] bytes) {
@@ -233,10 +192,6 @@ public class OssMediaUploadPolicy {
 
     private static byte[] ascii(String value) {
         return value.getBytes(StandardCharsets.US_ASCII);
-    }
-
-    private record MediaFormat(OssFileType fileType, Set<String> extensions, String canonicalMime,
-                               Set<String> mimeAliases, SignatureMatcher matcher) {
     }
 
     private record Vint(int length, long value) {

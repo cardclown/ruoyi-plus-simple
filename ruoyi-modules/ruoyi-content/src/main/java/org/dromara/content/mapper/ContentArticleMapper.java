@@ -55,6 +55,22 @@ public interface ContentArticleMapper extends BaseMapperPlus<ContentArticle, Con
     }
 
     /**
+     * 在附件全量替换前锁定单篇文章，包括尚无任何附件关联的文章。
+     *
+     * @param articleId 文章 ID
+     * @return 已锁定的文章；不存在或无权时返回 {@code null}
+     */
+    @DataPermission({
+        @DataColumn(key = "deptName", value = "create_dept"),
+        @DataColumn(key = "userName", value = "create_by")
+    })
+    default ContentArticle selectByIdForUpdate(Long articleId) {
+        return selectOne(new LambdaQueryWrapper<ContentArticle>()
+            .eq(ContentArticle::getArticleId, articleId)
+            .last("FOR UPDATE"));
+    }
+
+    /**
      * 在数据权限范围内分页读取文章视图对象。
      *
      * @param page 分页参数
