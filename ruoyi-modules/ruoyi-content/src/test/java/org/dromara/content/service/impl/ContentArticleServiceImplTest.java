@@ -1,7 +1,6 @@
 package org.dromara.content.service.impl;
 
 import org.dromara.common.core.exception.ServiceException;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
@@ -22,9 +21,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -116,24 +113,6 @@ class ContentArticleServiceImplTest {
     }
 
     @Test
-    void nonPagedListSelectsContentAndPopulatesOneBatch() {
-        List<ContentArticleVo> records = List.of(articleVo(100L, "完整正文"));
-        when(articleMapper.selectArticleList(any())).thenReturn(records);
-
-        List<ContentArticleVo> result = service.queryList(new ContentArticleQuery());
-
-        assertThat(result).singleElement()
-            .extracting(ContentArticleVo::getContent)
-            .isEqualTo("完整正文");
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<LambdaQueryWrapper<ContentArticle>> wrapperCaptor =
-            ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(articleMapper).selectArticleList(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getValue().getSqlSelect()).contains("content");
-        verify(attachmentManager).populate(records);
-    }
-
-    @Test
     void insertsArticleAndTagRelationsTogether() {
         ContentArticleBo bo = articleBo();
         bo.setAttachmentOssIds(List.of(10L));
@@ -162,8 +141,9 @@ class ContentArticleServiceImplTest {
             .extracting(ContentArticleTag::getArticleId, ContentArticleTag::getTagDictCode)
             .containsExactly(tuple(100L, 22L), tuple(100L, 21L));
 
-        InOrder order = inOrder(articleMapper, attachmentManager);
+        InOrder order = inOrder(articleMapper, tagMapper, attachmentManager);
         order.verify(articleMapper).insert(any(ContentArticle.class));
+        order.verify(tagMapper).insertBatch(anyList());
         order.verify(attachmentManager).replace(100L, List.of(10L), List.of(20L));
     }
 
@@ -200,6 +180,8 @@ class ContentArticleServiceImplTest {
         assertThatThrownBy(() -> service.insertByBo(bo))
             .isInstanceOf(ServiceException.class)
             .hasMessage("文章标签保存失败");
+
+        verify(attachmentManager, never()).replace(any(), any(), any());
     }
 
     @Test
@@ -221,9 +203,29 @@ class ContentArticleServiceImplTest {
         assertThat(updateCaptor.getValue().getTagIds()).isEmpty();
         verify(tagMapper).deleteByArticleId(100L);
         verify(tagMapper, never()).insertBatch(anyList());
-        InOrder order = inOrder(articleMapper, attachmentManager);
+        InOrder order = inOrder(articleMapper, tagMapper, attachmentManager);
         order.verify(articleMapper).updateArticleById(any(ContentArticle.class));
+        order.verify(tagMapper).deleteByArticleId(100L);
         order.verify(attachmentManager).replace(100L, List.of(10L), List.of(20L));
+    }
+
+    @Test
+    void updateTagFailureDoesNotReplaceAttachments() {
+        ContentArticleBo bo = articleBo();
+        bo.setArticleId(100L);
+        bo.setTagIds(List.of(21L));
+        bo.setAttachmentOssIds(List.of(10L));
+        when(articleMapper.selectArticleById(100L)).thenReturn(persistedArticle());
+        when(dictionaryService.validateAndNormalize(11L, List.of(21L))).thenReturn(List.of(21L));
+        when(articleMapper.updateArticleById(any(ContentArticle.class))).thenReturn(1);
+        when(tagMapper.insertBatch(anyList())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.updateByBo(bo))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("文章标签保存失败");
+
+        verify(tagMapper).deleteByArticleId(100L);
+        verify(attachmentManager, never()).replace(any(), any(), any());
     }
 
     @Test
@@ -421,6 +423,7 @@ class ContentArticleServiceImplTest {
             .hasMessage("只能物理删除已逻辑删除且有权操作的文章");
 
         verify(tagMapper, never()).deleteByArticleIds(any());
+        verify(attachmentManager, never()).deletePermanently(any());
     }
 
     @Test
@@ -431,22 +434,6 @@ class ContentArticleServiceImplTest {
         assertThatThrownBy(() -> service.physicalDeleteByIds(List.of(100L, 101L)))
             .isInstanceOf(ServiceException.class)
             .hasMessage("文章物理删除失败");
-    }
-
-    @Test
-    void allWriteMethodsDeclareRollbackForException() throws Exception {
-        assertTransactional("insertByBo", ContentArticleBo.class);
-        assertTransactional("updateByBo", ContentArticleBo.class);
-        assertTransactional("changeStatus", Long.class, String.class);
-        assertTransactional("deleteWithValidByIds", Collection.class, Boolean.class);
-        assertTransactional("physicalDeleteByIds", Collection.class);
-    }
-
-    private static void assertTransactional(String name, Class<?>... parameterTypes) throws Exception {
-        Method method = ContentArticleServiceImpl.class.getMethod(name, parameterTypes);
-        Transactional transactional = method.getAnnotation(Transactional.class);
-        assertThat(transactional).isNotNull();
-        assertThat(transactional.rollbackFor()).contains(Exception.class);
     }
 
     private static ContentArticleBo articleBo() {

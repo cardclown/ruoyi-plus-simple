@@ -111,8 +111,8 @@ public class ContentArticleServiceImpl implements IContentArticleService {
             throw new ServiceException("文章新增失败");
         }
         bo.setArticleId(article.getArticleId());
-        attachmentManager.replace(article.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         insertTags(article.getArticleId(), article.getTagIds());
+        attachmentManager.replace(article.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         return true;
     }
 
@@ -134,9 +134,9 @@ public class ContentArticleServiceImpl implements IContentArticleService {
         if (articleMapper.updateArticleById(update) != 1) {
             throw new ServiceException("文章修改失败");
         }
-        attachmentManager.replace(update.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         tagMapper.deleteByArticleId(update.getArticleId());
         insertTags(update.getArticleId(), update.getTagIds());
+        attachmentManager.replace(update.getArticleId(), bo.getAttachmentOssIds(), bo.getVideoOssIds());
         return true;
     }
 
