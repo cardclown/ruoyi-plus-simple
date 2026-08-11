@@ -1,6 +1,10 @@
 --- # 临时文件存储位置；必须为当前应用实例独占，进程内上传租约不协调其他实例
 spring.servlet.multipart.location: /ruoyi/server/temp
 
+oss:
+  cleanup:
+    interval: PT1H
+
 --- # 数据源配置
 spring:
   datasource:
