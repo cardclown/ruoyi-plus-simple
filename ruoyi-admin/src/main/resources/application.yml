@@ -1,7 +1,7 @@
 # 开发环境配置
 server:
-  # 服务器的HTTP端口，默认为8080
-  port: 8080
+  # 生产部署统一使用 18080，避免与同机其他 Web 服务的常用端口冲突
+  port: 18080
   servlet:
     # 应用的访问路径
     context-path: /
@@ -224,6 +224,10 @@ xss:
   # 排除链接
   excludeUrls:
     - /system/notice
+    # 文章正文需要保留安全富文本，不能先被全局过滤器无差别删除全部 HTML；
+    # 标题和摘要仍由 @Xss 校验，正文在 ContentArticleHtmlSanitizer 中执行严格白名单过滤。
+    - /content/article
+    - /content/article/edit
 
 --- # 分布式锁 lock4j 全局配置
 lock4j:

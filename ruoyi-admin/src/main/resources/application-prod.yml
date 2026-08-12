@@ -17,7 +17,8 @@ spring:
         master:
           type: ${spring.datasource.type}
           driverClassName: org.postgresql.Driver
-          url: jdbc:postgresql://localhost:5432/ry_vue?reWriteBatchedInserts=true
+          # PostgreSQL 原生服务仅监听本机 15432，并要求 TCP 连接使用 TLS。
+          url: jdbc:postgresql://localhost:15432/ry_vue?reWriteBatchedInserts=true&sslmode=require
           username: postgres
           password: postgres123
       hikari:
@@ -33,7 +34,8 @@ spring:
 spring.data:
   redis:
     host: localhost
-    port: 6379
+    # Redis 原生服务仅监听本机 16379；公网入口配置不参与应用内部连接。
+    port: 16379
     database: 0
     password: ruoyi123
     timeout: 10s
