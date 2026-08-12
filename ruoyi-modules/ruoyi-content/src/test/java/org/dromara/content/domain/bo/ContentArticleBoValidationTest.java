@@ -68,6 +68,17 @@ class ContentArticleBoValidationTest {
     }
 
     @Test
+    void rejectsHtmlTagsInTitleAndSummary() {
+        ContentArticleBo article = validArticle();
+        article.setTitle("<script>alert(1)</script>");
+        article.setSummary("<img src=x onerror=alert(2)>");
+
+        assertThat(validator.validate(article, AddGroup.class))
+            .extracting(violation -> violation.getPropertyPath().toString())
+            .contains("title", "summary");
+    }
+
+    @Test
     void acceptsTenImagesAndFiveVideos() {
         ContentArticleBo article = validArticle();
         article.setAttachmentOssIds(LongStream.rangeClosed(1, 10).boxed().toList());

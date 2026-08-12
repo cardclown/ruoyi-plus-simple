@@ -12,7 +12,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 文章富文本白名单过滤器，保留 Quill 常用格式和图片。
+ * 文章富文本白名单过滤器，保留 Quill 常用格式以及浏览器原生图片、视频。
+ * <p>
+ * 文章写接口会绕过全局“删除所有 HTML”过滤器，因此这里是正文持久化前的安全边界：
+ * 只允许明确列出的标签、属性、URL 协议和展示样式，脚本标签、事件属性及脚本协议仍会被删除。
+ * </p>
  */
 @Component
 public class ContentArticleHtmlSanitizer {
@@ -23,6 +27,10 @@ public class ContentArticleHtmlSanitizer {
     private static final Pattern QUILL_LIST_ATTRIBUTE = Pattern.compile(
         "(?i)\\sdata-list=([\"'])(bullet|ordered|checked|unchecked)\\1"
     );
+    /** 在白名单过滤前暂存图片和视频的对齐属性，兼容 HTMLFilter 不识别连字符属性名的限制。 */
+    private static final Pattern MEDIA_ALIGN_ATTRIBUTE = Pattern.compile(
+        "(?i)\\sdata-align=([\"'])(left|center|right)\\1"
+    );
     /** 拒绝 CSS 表达式、任何 {@code url(...)} 引用、导入、脚本协议以及高风险指令和浏览器扩展。 */
     private static final Pattern DANGEROUS_STYLE = Pattern.compile(
         "(?i)(expression\\s*\\(|url\\s*\\(|@import|javascript\\s*:|behavior\\s*:|-moz-binding|!important)"
@@ -31,7 +39,13 @@ public class ContentArticleHtmlSanitizer {
     private static final Set<String> ALLOWED_STYLE_PROPERTIES = Set.of(
         "color", "background-color", "text-align", "text-indent", "font-size", "font-family",
         "font-weight", "font-style", "text-decoration", "line-height", "letter-spacing",
-        "white-space", "margin-left", "padding-left"
+        "white-space", "margin-left", "padding-left", "display", "margin"
+    );
+    /** 媒体居中需要 display，但仅允许不会脱离文档流的常用展示值。 */
+    private static final Set<String> ALLOWED_DISPLAY_VALUES = Set.of("block", "inline", "inline-block");
+    /** margin 仅允许由 auto 或零值组成，满足媒体居中且避免负边距等布局劫持。 */
+    private static final Pattern SAFE_MARGIN_VALUE = Pattern.compile(
+        "(?i)^(?:(?:auto|0(?:px|em|rem|%)?)(?:\\s+|$)){1,4}$"
     );
 
     /**
@@ -46,9 +60,12 @@ public class ContentArticleHtmlSanitizer {
         }
         // 临时改用白名单内属性名，避免 HTMLFilter 丢弃 data-*；这不是业务字段改名。
         String normalized = QUILL_LIST_ATTRIBUTE.matcher(html).replaceAll(" datalist=\"$2\"");
+        normalized = MEDIA_ALIGN_ATTRIBUTE.matcher(normalized).replaceAll(" dataalign=\"$2\"");
         String filtered = new HTMLFilter(configuration()).filter(normalized);
-        // 过滤完成后恢复 Quill 的 data-list 语义；前述转换仅用于穿过 HTMLFilter。
-        return sanitizeStyles(filtered).replaceAll("(?i)\\sdatalist=\"", " data-list=\"");
+        // 过滤完成后恢复 Quill 和媒体属性语义；前述转换仅用于穿过 HTMLFilter。
+        return sanitizeStyles(filtered)
+            .replaceAll("(?i)\\sdatalist=\"", " data-list=\"")
+            .replaceAll("(?i)\\sdataalign=\"", " data-align=\"");
     }
 
     /**
@@ -68,18 +85,24 @@ public class ContentArticleHtmlSanitizer {
         allowed.put("br", List.of());
         allowed.put("li", attributes(commonAttributes, "datalist"));
         allowed.put("a", attributes(commonAttributes, "href", "target", "rel", "title"));
-        allowed.put("img", attributes(commonAttributes, "src", "width", "height", "alt", "title"));
+        allowed.put("img", attributes(
+            commonAttributes, "src", "width", "height", "alt", "title", "dataalign"));
+        // 仅开放浏览器原生媒体标签；iframe/object/embed 继续禁止，避免引入任意第三方可执行页面。
+        allowed.put("video", attributes(
+            commonAttributes, "src", "poster", "width", "height", "controls", "preload",
+            "autoplay", "muted", "loop", "playsinline", "dataalign"));
+        allowed.put("source", List.of("src", "type"));
 
         Map<String, Object> config = new HashMap<>();
         config.put("vAllowed", allowed);
-        config.put("vSelfClosingTags", new String[]{"br", "img"});
+        config.put("vSelfClosingTags", new String[]{"br", "img", "source"});
         config.put("vNeedClosingTags", new String[]{
             "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "code",
-            "ol", "ul", "li", "span", "strong", "b", "em", "i", "u", "s", "sub", "sup", "a"
+            "ol", "ul", "li", "span", "strong", "b", "em", "i", "u", "s", "sub", "sup", "a", "video"
         });
         config.put("vDisallowed", new String[]{"script", "iframe", "object", "embed", "form"});
         config.put("vAllowedProtocols", new String[]{"http", "https", "mailto"});
-        config.put("vProtocolAtts", new String[]{"src", "href"});
+        config.put("vProtocolAtts", new String[]{"src", "href", "poster"});
         config.put("vRemoveBlanks", new String[]{});
         config.put("vAllowedEntities", new String[]{"amp", "gt", "lt", "quot", "apos", "nbsp"});
         config.put("stripComment", true);
@@ -112,9 +135,7 @@ public class ContentArticleHtmlSanitizer {
                 }
                 String property = declaration.substring(0, separator).trim().toLowerCase();
                 String value = declaration.substring(separator + 1).trim();
-                if (ALLOWED_STYLE_PROPERTIES.contains(property)
-                    && !value.isEmpty()
-                    && !DANGEROUS_STYLE.matcher(value).find()) {
+                if (isAllowedStyle(property, value)) {
                     safeStyle.append(property).append(": ").append(value).append(';');
                 }
             }
@@ -123,5 +144,28 @@ public class ContentArticleHtmlSanitizer {
         }
         matcher.appendTail(output);
         return output.toString();
+    }
+
+    /**
+     * 判断单条 CSS 声明是否可持久化。媒体布局属性采用比普通展示属性更严格的值白名单，
+     * 以保留居中效果，同时拒绝脱离文档流或使用负边距干扰页面布局。
+     *
+     * @param property 已规范为小写的 CSS 属性名
+     * @param value CSS 属性值
+     * @return 属性和值均满足文章展示白名单时返回 {@code true}
+     */
+    private boolean isAllowedStyle(String property, String value) {
+        if (!ALLOWED_STYLE_PROPERTIES.contains(property)
+            || value.isEmpty()
+            || DANGEROUS_STYLE.matcher(value).find()) {
+            return false;
+        }
+        if ("display".equals(property)) {
+            return ALLOWED_DISPLAY_VALUES.contains(value.toLowerCase());
+        }
+        if ("margin".equals(property)) {
+            return SAFE_MARGIN_VALUE.matcher(value).matches();
+        }
+        return true;
     }
 }
