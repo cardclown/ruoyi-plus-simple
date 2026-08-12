@@ -37,7 +37,7 @@ public class SysOssBo extends BaseEntity {
     private String fileSuffix;
 
     /**
-     * URL地址
+     * 兼容字段值；新数据中等于对象 Key，不代表当前访问地址
      */
     private String url;
 

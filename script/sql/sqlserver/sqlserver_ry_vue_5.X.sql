@@ -2754,7 +2754,7 @@ EXEC sp_addextendedproperty
     'COLUMN', N'file_suffix'
 GO
 EXEC sp_addextendedproperty
-    'MS_Description', N'URL地址',
+    'MS_Description', N'兼容对象定位字段（新数据保存对象Key）',
     'SCHEMA', N'dbo',
     'TABLE', N'sys_oss',
     'COLUMN', N'url'

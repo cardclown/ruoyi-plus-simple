@@ -1092,7 +1092,7 @@ comment on column sys_oss.tenant_id         is '租户编码';
 comment on column sys_oss.file_name         is '文件名';
 comment on column sys_oss.original_name     is '原名';
 comment on column sys_oss.file_suffix       is '文件后缀名';
-comment on column sys_oss.url               is 'URL地址';
+comment on column sys_oss.url               is '兼容对象定位字段（新数据保存对象Key）';
 comment on column sys_oss.service           is '服务商';
 comment on column sys_oss.ext1              is '扩展字段';
 comment on column sys_oss.create_dept       is '创建部门';

@@ -21,7 +21,9 @@ import java.util.Date;
 import java.util.Set;
 
 /**
- * Deletes one temporary OSS object and its locked metadata row in an isolated transaction.
+ * 在独立事务中清理单个未绑定的临时 OSS 对象及其元数据。
+ *
+ * <p>先锁定并复核元数据，再按稳定对象 Key 删除存储对象，避免 OSS 地址变化后遗留垃圾文件。</p>
  */
 @Slf4j
 @Component
@@ -57,7 +59,7 @@ public class OssTemporaryObjectCleaner {
         if (!isCleanable(ext)) {
             return false;
         }
-        clientProvider.byService(oss.getService()).delete(oss.getUrl());
+        clientProvider.byService(oss.getService()).deleteObject(oss.getFileName());
         LambdaQueryWrapper<SysOss> deleteQuery = Wrappers.lambdaQuery();
         deleteQuery.eq(SysOss::getOssId, ossId)
             .eq(SysOss::getExt1, oss.getExt1())

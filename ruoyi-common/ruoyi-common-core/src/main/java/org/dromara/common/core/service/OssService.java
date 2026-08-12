@@ -15,7 +15,7 @@ import java.util.Map;
 public interface OssService {
 
     /**
-     * 通过ossId查询对应的url
+     * 通过 ossId 查询按当前 OSS 配置生成的访问地址
      *
      * @param ossIds ossId串逗号分隔
      * @return url串逗号分隔
@@ -39,7 +39,9 @@ public interface OssService {
     List<OssDTO> selectByIds(Collection<Long> ossIds);
 
     /**
-     * 批量查询文件元数据，并为私有桶生成当前可用 URL。
+     * 批量查询文件元数据，并按当前 OSS 配置生成可用 URL。
+     *
+     * <p>返回地址是临时展示值，不是附件定位依据；调用方不得将其持久化为永久地址。</p>
      *
      * @param ossIds ossId 集合
      * @return 当前可展示的文件元数据列表

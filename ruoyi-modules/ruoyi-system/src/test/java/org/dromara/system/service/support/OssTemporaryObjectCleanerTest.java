@@ -69,7 +69,7 @@ class OssTemporaryObjectCleanerTest {
 
         assertThat(deleted).isTrue();
         InOrder order = inOrder(client, mapper);
-        order.verify(client).delete("https://bucket.example/uploads/10");
+        order.verify(client).deleteObject("uploads/10");
         order.verify(mapper).delete(any());
     }
 
@@ -80,7 +80,7 @@ class OssTemporaryObjectCleanerTest {
         when(mapper.selectOne(any())).thenReturn(eligible);
         when(clientProvider.byService("minio")).thenReturn(client);
         doThrow(new IllegalStateException("object store unavailable")).when(client)
-            .delete("https://bucket.example/uploads/10");
+            .deleteObject("uploads/10");
 
         assertThatThrownBy(() -> cleaner.cleanCandidate(10L, new Date(1_786_291_200_000L)))
             .isInstanceOf(IllegalStateException.class)
@@ -131,6 +131,7 @@ class OssTemporaryObjectCleanerTest {
         SysOss oss = new SysOss();
         oss.setOssId(id);
         oss.setService("minio");
+        oss.setFileName("uploads/" + id);
         oss.setUrl("https://bucket.example/uploads/" + id);
         oss.setExt1(ext1);
         return oss;

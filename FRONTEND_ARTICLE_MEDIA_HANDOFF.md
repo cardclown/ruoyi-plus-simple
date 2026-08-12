@@ -99,7 +99,8 @@ interface OssUploadResult {
 
 - 图片上传成功后，把 `ossId` 加入 `attachmentOssIds`。
 - 视频上传成功后，把 `ossId` 加入 `videoOssIds`。
-- `url` 只用于当前页面即时预览，不提交到文章接口。
+- `url` 由后端根据当前 OSS 配置动态生成，只用于当前页面即时预览，不提交到文章接口，也不要跨页面长期缓存。
+- 相同图片或视频每次上传都会生成新的 `ossId` 和对象 Key；前端不要按文件名、内容或 URL 合并不同上传结果。
 - 上传未完成时禁用文章保存按钮。
 - 大文件上传不要设置 30～60 秒的短超时，并提供上传进度和取消操作。
 
@@ -245,7 +246,8 @@ GET /content/article/public/list?pageNum=1&pageSize=10&title=新闻&categoryDict
 - 列表页需要展示媒体时，一次传入当前页全部 `articleId`，不要逐篇请求。
 - 前端按响应中的 `articleId` 建立 Map，再匹配文章。
 - 不要在官网调用管理端的 `listByIds`，也不要长期缓存 URL。
-- MinIO URL 会根据本次 API 请求 Host 动态生成，前端不得写死服务器 IP 或自行替换 URL 主机。
+- MinIO URL 会根据当前 OSS 配置和本次 API 请求 Host 动态生成，前端不得写死服务器 IP、自行替换 URL 主机或把 URL 当作附件身份。
+- MinIO 换址后，只要新存储保留相同 bucket 和对象 Key，后端更新 OSS 配置即可；前端仍通过 OSS ID 重新查询当前 URL。
 
 ## 三、前端限制
 

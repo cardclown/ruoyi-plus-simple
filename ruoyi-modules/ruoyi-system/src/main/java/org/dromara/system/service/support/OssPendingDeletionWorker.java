@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Objects;
 
 /**
- * Deletes one committed pending object after locking and rechecking its exact token.
+ * 锁定并复核删除令牌后，清理一条已提交的待删除附件。
+ *
+ * <p>对象删除只使用 {@code fileName}，不能依赖可能因 OSS 迁移而失效的历史完整 URL。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -46,7 +48,7 @@ public class OssPendingDeletionWorker {
             return false;
         }
 
-        clientProvider.byService(row.getService()).delete(row.getUrl());
+        clientProvider.byService(row.getService()).deleteObject(row.getFileName());
         LambdaQueryWrapper<SysOss> exactDelete = Wrappers.lambdaQuery();
         exactDelete.eq(SysOss::getOssId, ossId).eq(SysOss::getExt1, row.getExt1());
         if (mapper.delete(exactDelete) != 1) {

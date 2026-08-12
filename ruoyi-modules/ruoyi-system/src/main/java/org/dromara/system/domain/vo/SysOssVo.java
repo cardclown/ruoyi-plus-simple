@@ -28,7 +28,7 @@ public class SysOssVo implements Serializable {
     private Long ossId;
 
     /**
-     * 文件名
+     * 对象存储中的稳定 Key
      */
     private String fileName;
 
@@ -43,7 +43,7 @@ public class SysOssVo implements Serializable {
     private String fileSuffix;
 
     /**
-     * URL地址
+     * 按当前 OSS 配置临时生成的访问地址，不应持久化或缓存为永久地址
      */
     private String url;
 

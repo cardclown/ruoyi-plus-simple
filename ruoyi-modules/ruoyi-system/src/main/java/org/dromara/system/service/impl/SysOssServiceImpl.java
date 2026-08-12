@@ -117,12 +117,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         for (Long id : ids) {
             SysOssVo vo = voById.get(id);
             if (ObjectUtil.isNotNull(vo) && !isPendingDeletion(vo.getExt1())) {
-                try {
-                    list.add(this.matchingUrl(vo));
-                } catch (Exception ignored) {
-                    // 如果oss异常无法连接则将数据直接返回
-                    list.add(vo);
-                }
+                list.add(this.matchingUrl(vo));
             }
         }
         return list;
@@ -141,12 +136,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         for (Long id : StringUtils.splitTo(ossIds, Convert::toLong)) {
             SysOssVo vo = ossService.getById(id);
             if (ObjectUtil.isNotNull(vo)) {
-                try {
-                    list.add(this.matchingUrl(vo).getUrl());
-                } catch (Exception ignored) {
-                    // 如果oss异常无法连接则将数据直接返回
-                    list.add(vo.getUrl());
-                }
+                list.add(this.matchingUrl(vo).getUrl());
             }
         }
         return StringUtils.joinComma(list);
@@ -158,13 +148,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         for (Long id : StringUtils.splitTo(ossIds, Convert::toLong)) {
             SysOssVo vo = SpringUtils.getAopProxy(this).getById(id);
             if (ObjectUtil.isNotNull(vo)) {
-                try {
-                    vo.setUrl(this.matchingUrl(vo).getUrl());
-                    list.add(BeanUtil.toBean(vo, OssDTO.class));
-                } catch (Exception ignored) {
-                    // 如果oss异常无法连接则将数据直接返回
-                    list.add(BeanUtil.toBean(vo, OssDTO.class));
-                }
+                vo.setUrl(this.matchingUrl(vo).getUrl());
+                list.add(BeanUtil.toBean(vo, OssDTO.class));
             }
         }
         return list;
@@ -424,7 +409,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
                                        UploadResult uploadResult, SysOssExt ext1) {
         SysOss oss = new SysOss();
         try {
-            oss.setUrl(uploadResult.getUrl());
+            // url 为框架兼容字段，新数据仅保存对象 Key；访问地址必须按当前 OSS 配置动态生成。
+            oss.setUrl(uploadResult.getFilename());
             oss.setFileSuffix(suffix);
             oss.setFileName(uploadResult.getFilename());
             oss.setOriginalName(originalfileName);
@@ -447,7 +433,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
 
     private void deleteUploadedObject(OssClient storage, UploadResult uploadResult, Throwable originalException) {
         try {
-            storage.delete(uploadResult.getUrl());
+            storage.deleteObject(uploadResult.getFilename());
         } catch (RuntimeException deleteException) {
             originalException.addSuppressed(deleteException);
         }
@@ -492,7 +478,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             throw new ServiceException("部分附件不存在或不属于当前租户");
         }
         for (SysOss oss : ossList) {
-            ossClientProvider.byService(oss.getService()).delete(oss.getUrl());
+            ossClientProvider.byService(oss.getService()).deleteObject(oss.getFileName());
         }
         if (baseMapper.deleteByIds(ids) != ids.size()) {
             throw new ServiceException("附件删除失败");
@@ -536,10 +522,11 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     /**
-     * 将存储 URL 转换为当前请求可使用的 URL。
+     * 根据稳定对象 Key 和当前 OSS 配置生成本次请求可使用的 URL。
      *
-     * <p>私有桶仍生成 120 秒签名 URL，不得修改签名中的 Host；公共本机 MinIO 则只在响应阶段
-     * 使用当前请求 Host，数据库继续保存稳定的内部地址。</p>
+     * <p>{@code fileName + service} 是持久化定位依据，数据库兼容字段 {@code url} 不参与生成，
+     * 因而 MinIO 换址后无需批量修改附件记录。私有桶生成 120 秒签名 URL；公共本机 MinIO
+     * 仍只在响应阶段将回环地址映射为当前请求 Host。</p>
      *
      * @param oss OSS对象
      * @return 已匹配当前访问环境的 OSS 对象
@@ -550,7 +537,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             oss.setUrl(storage.createPresignedGetUrl(oss.getFileName(), Duration.ofSeconds(120)));
         } else {
             oss.setUrl(OssPublicUrlResolver.resolveForCurrentRequest(
-                oss.getUrl(), storage.getEndpoint(), storage.getDomain()));
+                storage.getObjectUrl(oss.getFileName()), storage.getEndpoint(), storage.getDomain()));
         }
         return oss;
     }

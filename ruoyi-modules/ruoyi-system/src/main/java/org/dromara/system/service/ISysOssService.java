@@ -34,7 +34,7 @@ public interface ISysOssService {
      * 根据一组 ossIds 获取对应的 SysOssVo 列表
      *
      * @param ossIds 一组文件在数据库中的唯一标识集合
-     * @return 包含 SysOssVo 对象的列表
+     * @return 包含按当前 OSS 配置生成访问地址的 SysOssVo 列表
      */
     List<SysOssVo> listByIds(Collection<Long> ossIds);
 
@@ -46,7 +46,9 @@ public interface ISysOssService {
     void deleteByIds(Collection<Long> ossIds);
 
     /**
-     * 根据 ossId 从缓存或数据库中获取 SysOssVo 对象
+     * 根据 ossId 从缓存或数据库中获取原始附件元数据。
+     *
+     * <p>该内部方法不会生成当前访问地址；需要向客户端返回 URL 时应使用 {@link #listByIds(Collection)}。</p>
      *
      * @param ossId 文件在数据库中的唯一标识
      * @return SysOssVo 对象，包含文件信息

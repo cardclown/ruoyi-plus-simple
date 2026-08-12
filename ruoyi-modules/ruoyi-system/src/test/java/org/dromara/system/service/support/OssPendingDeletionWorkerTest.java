@@ -28,14 +28,14 @@ class OssPendingDeletionWorkerTest {
         when(mapper.selectOne(any())).thenReturn(pending(10L, "token-1"));
         when(clients.byService("minio")).thenReturn(client);
         doThrow(new IllegalStateException("object store unavailable"))
-            .when(client).delete("https://bucket.example/10");
+            .when(client).deleteObject("objects/10");
 
         assertThatThrownBy(() -> worker.deleteCandidate(10L, "token-1"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessage("object store unavailable");
         verify(mapper, never()).delete(any());
 
-        doNothing().when(client).delete("https://bucket.example/10");
+        doNothing().when(client).deleteObject("objects/10");
         when(mapper.delete(any())).thenReturn(1);
         assertThat(worker.deleteCandidate(10L, "token-1")).isTrue();
         verify(mapper).delete(any());
@@ -58,6 +58,7 @@ class OssPendingDeletionWorkerTest {
         SysOss oss = new SysOss();
         oss.setOssId(id);
         oss.setService("minio");
+        oss.setFileName("objects/" + id);
         oss.setUrl("https://bucket.example/" + id);
         oss.setExt1("{\"refType\":\"content_article\",\"refId\":\"100\","
             + "\"deleteStatus\":\"PENDING\",\"deleteToken\":\"" + token + "\"}");

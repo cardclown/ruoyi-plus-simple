@@ -327,19 +327,40 @@ public class OssClient {
     }
 
     /**
-     * 删除云存储服务中指定路径下文件
+     * 按对象 Key 删除云存储文件。
      *
-     * @param path 指定路径
+     * <p>业务数据只应持久化对象 Key，不能把可能随部署环境变化的完整 URL 当作对象标识。
+     * 该方法拒绝完整 URL，避免 MinIO 换址后把旧地址误传给 S3 作为 Key，造成对象残留。</p>
+     *
+     * @param objectKey 对象存储中的稳定 Key
+     * @throws OssException 对象 Key 为空、为完整 URL 或对象存储删除失败时抛出
      */
-    public void delete(String path) {
+    public void deleteObject(String objectKey) {
+        if (StringUtils.isBlank(objectKey)) {
+            throw new OssException("删除文件失败：对象Key不能为空");
+        }
+        if (objectKey.startsWith(Constants.HTTP) || objectKey.startsWith(Constants.HTTPS)) {
+            throw new OssException("删除文件失败：对象Key不能是完整URL");
+        }
         try {
             client.deleteObject(
                 x -> x.bucket(properties.getBucketName())
-                    .key(removeBaseUrl(path))
+                    .key(objectKey)
                     .build()).join();
         } catch (Exception e) {
             throw new OssException("删除文件失败，请检查配置信息:[" + e.getMessage() + "]");
         }
+    }
+
+    /**
+     * 兼容按当前配置生成的完整路径删除文件。
+     *
+     * @param path 当前 OSS 配置下的完整路径或对象 Key
+     * @deprecated 业务层请改用 {@link #deleteObject(String)}，完整 URL 不是稳定的对象标识
+     */
+    @Deprecated(since = "5.X")
+    public void delete(String path) {
+        deleteObject(removeBaseUrl(path));
     }
 
     /**
@@ -507,6 +528,22 @@ public class OssClient {
                 domain + StringUtils.SLASH + properties.getBucketName() : header + domain + StringUtils.SLASH + properties.getBucketName();
         }
         return header + endpoint + StringUtils.SLASH + properties.getBucketName();
+    }
+
+    /**
+     * 根据当前 OSS 配置和稳定对象 Key 生成公共访问地址。
+     *
+     * <p>该地址仅用于本次接口响应，不应持久化；服务迁移后调用方会自然得到新地址。</p>
+     *
+     * @param objectKey 对象存储中的稳定 Key
+     * @return 当前 OSS 配置对应的完整访问地址
+     * @throws OssException 对象 Key 为空时抛出
+     */
+    public String getObjectUrl(String objectKey) {
+        if (StringUtils.isBlank(objectKey)) {
+            throw new OssException("生成文件地址失败：对象Key不能为空");
+        }
+        return getUrl() + StringUtils.SLASH + objectKey;
     }
 
     /**

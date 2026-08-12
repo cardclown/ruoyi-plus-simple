@@ -20,10 +20,60 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @Tag("dev")
 class OssClientTest {
+
+    @Test
+    void deleteObjectUsesStableObjectKeyDirectly() throws Exception {
+        S3AsyncClient s3 = mock(S3AsyncClient.class);
+        when(s3.deleteObject(anyDeleteRequest())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<DeleteObjectRequest.Builder> requestConsumer = invocation.getArgument(0);
+            DeleteObjectRequest.Builder builder = DeleteObjectRequest.builder();
+            requestConsumer.accept(builder);
+            assertThat(builder.build().key()).isEqualTo("uploads/a.png");
+            return CompletableFuture.completedFuture(DeleteObjectResponse.builder().build());
+        });
+        OssClient client = clientUsing(s3);
+
+        client.deleteObject("uploads/a.png");
+    }
+
+    @Test
+    void deleteObjectRejectsAFullUrlBeforeCallingObjectStore() throws Exception {
+        S3AsyncClient s3 = mock(S3AsyncClient.class);
+        OssClient client = clientUsing(s3);
+
+        assertThatThrownBy(() -> client.deleteObject("http://old-minio/uploads/a.png"))
+            .isInstanceOf(OssException.class)
+            .hasMessageContaining("对象Key不能是完整URL");
+
+        verify(s3, never()).deleteObject(anyDeleteRequest());
+    }
+
+    @Test
+    void sameFileSuffixStillGeneratesAnIndependentObjectKeyForEveryUpload() throws Exception {
+        OssClient client = clientUsing(mock(S3AsyncClient.class));
+
+        String first = client.getPath("uploads", ".png");
+        String second = client.getPath("uploads", ".png");
+
+        assertThat(first).isNotEqualTo(second);
+        assertThat(first).startsWith("uploads/").endsWith(".png");
+        assertThat(second).startsWith("uploads/").endsWith(".png");
+    }
+
+    @Test
+    void objectUrlAlwaysUsesCurrentClientConfiguration() throws Exception {
+        OssClient client = clientUsing(mock(S3AsyncClient.class));
+
+        assertThat(client.getObjectUrl("uploads/a.png"))
+            .isEqualTo("http://localhost:9000/attachments/uploads/a.png");
+    }
 
     @Test
     void deletePropagatesAsyncObjectStoreFailure() throws Exception {

@@ -51,6 +51,7 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -109,6 +110,11 @@ class SysOssServiceImplTest {
     void setUp() {
         service = new SysOssServiceImpl(mapper, ossClientProvider, new OssMediaUploadPolicy(),
             temporaryObjectCleaner, businessDeletionCoordinator);
+        lenient().when(ossClient.getAccessPolicy()).thenReturn(AccessPolicyType.PUBLIC);
+        lenient().when(ossClient.getObjectUrl(any(String.class)))
+            .thenAnswer(invocation -> "https://bucket.example/" + invocation.getArgument(0));
+        lenient().when(ossClient.getEndpoint()).thenReturn("https://bucket.example");
+        lenient().when(ossClient.getDomain()).thenReturn("https://bucket.example");
     }
 
     @AfterEach
@@ -174,6 +180,8 @@ class SysOssServiceImplTest {
         when(mapper.selectVoByIds(List.of(11L))).thenReturn(List.of(active));
         when(ossClientProvider.byService("minio")).thenReturn(ossClient);
         when(ossClient.getAccessPolicy()).thenReturn(AccessPolicyType.PUBLIC);
+        when(ossClient.getObjectUrl("uploads/11.png"))
+            .thenReturn("http://127.0.0.1:9000/ruoyi/uploads/11.png");
         when(ossClient.getEndpoint()).thenReturn("http://127.0.0.1:9000");
         when(ossClient.getDomain()).thenReturn("http://127.0.0.1:9000");
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -184,6 +192,25 @@ class SysOssServiceImplTest {
             .singleElement()
             .extracting(OssDTO::getOssId, OssDTO::getUrl)
             .containsExactly(11L, "http://10.50.3.55:9000/ruoyi/uploads/11.png");
+    }
+
+    @Test
+    void resolveByIdsIgnoresLegacyUrlAndUsesCurrentOssConfiguration() {
+        SysOssVo active = vo(11L, "{\"isTemp\":false}");
+        active.setService("minio");
+        active.setFileName("uploads/11.png");
+        active.setUrl("http://old-minio:9000/old-bucket/uploads/11.png");
+        when(mapper.selectVoByIds(List.of(11L))).thenReturn(List.of(active));
+        when(ossClientProvider.byService("minio")).thenReturn(ossClient);
+        when(ossClient.getObjectUrl("uploads/11.png"))
+            .thenReturn("https://new-files.example/new-bucket/uploads/11.png");
+        when(ossClient.getEndpoint()).thenReturn("https://new-files.example");
+        when(ossClient.getDomain()).thenReturn("https://new-files.example");
+
+        assertThat(service.resolveByIds(List.of(11L)))
+            .singleElement()
+            .extracting(OssDTO::getUrl)
+            .isEqualTo("https://new-files.example/new-bucket/uploads/11.png");
     }
 
     @Test
@@ -325,6 +352,7 @@ class SysOssServiceImplTest {
             .extracting(SysOssExt::getFileSize, SysOssExt::getContentType, SysOssExt::getIsTemp,
                 SysOssExt::getFileType, SysOssExt::getSource)
             .containsExactly(3L, "text/plain", true, null, null);
+        assertThat(ossCaptor.getValue().getUrl()).isEqualTo("uploads/notes.txt");
         assertThat(result)
             .extracting(SysOssVo::getFileName, SysOssVo::getOriginalName, SysOssVo::getUrl)
             .containsExactly("uploads/notes.txt", "notes.txt", "https://bucket.example/uploads/notes.txt");
@@ -387,7 +415,7 @@ class SysOssServiceImplTest {
             .isInstanceOf(ServiceException.class)
             .hasMessage("文件信息保存失败");
 
-        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
+        verify(ossClient).deleteObject("uploads/cover.png");
     }
 
     @Test
@@ -423,7 +451,7 @@ class SysOssServiceImplTest {
             .hasCauseInstanceOf(IOException.class)
             .hasRootCauseMessage("close failed");
 
-        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
+        verify(ossClient).deleteObject("uploads/cover.png");
         verify(mapper, never()).insert(any(SysOss.class));
     }
 
@@ -447,7 +475,7 @@ class SysOssServiceImplTest {
             .hasMessage("post-insert mapping failed");
 
         verify(mapper).insert(any(SysOss.class));
-        verify(ossClient, never()).delete("https://bucket.example/uploads/cover.png");
+        verify(ossClient, never()).deleteObject("uploads/cover.png");
     }
 
     @Test
@@ -467,18 +495,19 @@ class SysOssServiceImplTest {
             .hasMessage("metadata creation failed");
 
         verify(mapper, never()).insert(any(SysOss.class));
-        verify(ossClient).delete("https://bucket.example/uploads/cover.png");
+        verify(ossClient).deleteObject("uploads/cover.png");
     }
 
     @Test
     void deleteByIdsDoesNotRemoveDatabaseRowsWhenObjectDeletionFails() {
         SysOss stored = oss(10L, null);
         stored.setService("minio");
+        stored.setFileName("uploads/a.png");
         stored.setUrl("https://bucket.example/uploads/a.png");
         when(mapper.selectByIds(List.of(10L))).thenReturn(List.of(stored));
         when(ossClientProvider.byService("minio")).thenReturn(ossClient);
         doThrow(new IllegalStateException("object store unavailable")).when(ossClient)
-            .delete("https://bucket.example/uploads/a.png");
+            .deleteObject("uploads/a.png");
 
         assertThatThrownBy(() -> service.deleteByIds(List.of(10L)))
             .isInstanceOf(IllegalStateException.class)

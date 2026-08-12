@@ -23,7 +23,7 @@ public class SysOss extends TenantEntity {
     private Long ossId;
 
     /**
-     * 文件名
+     * 对象存储中的稳定 Key，与 service 共同定位文件
      */
     private String fileName;
 
@@ -38,7 +38,7 @@ public class SysOss extends TenantEntity {
     private String fileSuffix;
 
     /**
-     * URL地址
+     * 框架兼容字段；新数据保存对象 Key，禁止作为访问地址或删除依据
      */
     private String url;
 
