@@ -43,4 +43,18 @@ public interface ContentArticleAttachmentMapper
         return delete(new LambdaQueryWrapper<ContentArticleAttachment>()
             .in(ContentArticleAttachment::getArticleId, articleIds));
     }
+
+    /**
+     * 锁定文章中的一条指定附件关系，供公共 OSS 删除接口校验并解除关联。
+     *
+     * @param articleId 文章 ID
+     * @param ossId OSS ID
+     * @return 已锁定的附件关系；不存在时返回 {@code null}
+     */
+    default ContentArticleAttachment selectByArticleAndOssForUpdate(Long articleId, Long ossId) {
+        return selectOne(new LambdaQueryWrapper<ContentArticleAttachment>()
+            .eq(ContentArticleAttachment::getArticleId, articleId)
+            .eq(ContentArticleAttachment::getOssId, ossId)
+            .last("FOR UPDATE"));
+    }
 }
