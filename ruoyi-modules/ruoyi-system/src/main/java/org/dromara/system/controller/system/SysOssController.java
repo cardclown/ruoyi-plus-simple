@@ -1,6 +1,7 @@
 package org.dromara.system.controller.system;
 
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotEmpty;
@@ -12,12 +13,15 @@ import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
+import org.dromara.system.domain.bo.SysOssDeleteBo;
 import org.dromara.system.domain.bo.SysOssBo;
 import org.dromara.system.domain.bo.SysOssIdsBo;
 import org.dromara.system.domain.enums.OssFileType;
+import org.dromara.system.domain.vo.SysOssDeleteResultVo;
 import org.dromara.system.domain.vo.SysOssUploadVo;
 import org.dromara.system.domain.vo.SysOssVo;
 import org.dromara.system.service.ISysOssService;
+import org.dromara.system.service.support.OssBatchDeleteService;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -38,6 +42,7 @@ import java.util.List;
 public class SysOssController extends BaseController {
 
     private final ISysOssService ossService;
+    private final OssBatchDeleteService batchDeleteService;
 
     /**
      * 查询OSS对象存储列表
@@ -89,6 +94,22 @@ public class SysOssController extends BaseController {
     @GetMapping("/download/{ossId}")
     public void download(@PathVariable Long ossId, HttpServletResponse response) throws IOException {
         ossService.download(ossId, response);
+    }
+
+    /**
+     * 批量删除附件并返回每个 OSS ID 的处理结果。
+     *
+     * <p>前端只提交 OSS ID，附件归属和具体业务权限由后端读取持久化数据后判断；
+     * 单项失败不会回滚本批次中已经成功的其他项。</p>
+     *
+     * @param bo OSS 批量删除请求
+     * @return 按请求首次出现顺序排列的逐项结果
+     */
+    @SaCheckLogin
+    @Log(title = "OSS对象存储", businessType = BusinessType.DELETE)
+    @PostMapping("/delete")
+    public R<List<SysOssDeleteResultVo>> delete(@Validated @RequestBody SysOssDeleteBo bo) {
+        return R.ok("删除请求处理完成", batchDeleteService.delete(bo.getOssIds()));
     }
 
     /**

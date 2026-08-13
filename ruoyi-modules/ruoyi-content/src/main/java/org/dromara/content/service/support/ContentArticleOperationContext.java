@@ -1,5 +1,6 @@
 package org.dromara.content.service.support;
 
+import cn.dev33.satoken.stp.StpUtil;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.springframework.stereotype.Component;
 
@@ -27,5 +28,14 @@ public class ContentArticleOperationContext {
      */
     public Date now() {
         return new Date();
+    }
+
+    /**
+     * 判断当前用户是否拥有文章编辑权限。
+     *
+     * @return 具有文章编辑权限时返回 {@code true}
+     */
+    public boolean canEditArticle() {
+        return StpUtil.hasPermission("content:article:edit");
     }
 }

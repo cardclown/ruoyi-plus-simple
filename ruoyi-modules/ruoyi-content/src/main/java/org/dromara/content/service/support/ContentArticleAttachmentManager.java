@@ -41,7 +41,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ContentArticleAttachmentManager {
 
-    private static final String ARTICLE_REF_TYPE = "content_article";
+    /** 文章附件写入 OSS 元数据和注册删除处理器时共同使用的稳定业务类型。 */
+    static final String ARTICLE_REF_TYPE = "content_article";
 
     private final ContentArticleMapper articleMapper;
     private final ContentArticleAttachmentMapper mapper;

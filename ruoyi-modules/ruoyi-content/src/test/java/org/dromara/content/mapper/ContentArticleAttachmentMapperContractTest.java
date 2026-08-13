@@ -50,6 +50,12 @@ class ContentArticleAttachmentMapperContractTest {
                     tuple(20L, "1", 0, 2001L)
                 );
 
+            assertThat(mapper.selectByArticleAndOssForUpdate(10L, 1002L))
+                .extracting(ContentArticleAttachment::getArticleAttachmentId,
+                    ContentArticleAttachment::getArticleId, ContentArticleAttachment::getOssId)
+                .containsExactly(2L, 10L, 1002L);
+            assertThat(mapper.selectByArticleAndOssForUpdate(20L, 1002L)).isNull();
+
             assertThat(mapper.deleteByArticleIds(List.of(10L))).isEqualTo(3);
             assertThat(mapper.selectByArticleIds(List.of(10L, 20L)))
                 .extracting(ContentArticleAttachment::getArticleId, ContentArticleAttachment::getOssId)
